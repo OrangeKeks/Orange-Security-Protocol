@@ -1,0 +1,105 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>OSPLibrary</name>
+    </assembly>
+    <members>
+        <member name="T:System.Net.Sockets.OSP.OSPClient">
+            <summary>
+            Это клиент. Подключается к серверу и обменивается с ним данными по вашему запросу. Обеспечивает автоматическое шифрование.
+            </summary>
+        </member>
+        <member name="P:System.Net.Sockets.OSP.OSPClient.IsConnected">
+            <summary>
+            Подключен ли клиент к серверу на текущий момент?
+            </summary>
+        </member>
+        <member name="M:System.Net.Sockets.OSP.OSPClient.Start">
+            <summary>
+            Запускаем клиент, присоединяясь к серверу.
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:System.Net.Sockets.OSP.OSPClient.Send(System.Byte[],System.String)">
+            <summary>
+            Используйте эту функцию для отправки данных удалённому серверу.
+            </summary>
+            <param name="data">Те данные, что Вы хотите отправить</param>
+            <param name="description">Эта переменная универсальна, используете её на своё усмотрение. Она находится в заголовке запроса. Нельзя использовать пробелы.</param>
+            <returns>Дешифрованный ответ от сервера.</returns>
+        </member>
+        <member name="E:System.Net.Sockets.OSP.OSPClient.OnNewMessage">
+            <summary>
+            Это событие происходит, когда заголовок полностью прочитывается. Не содержит тело запроса. (Только для неожиданных сообщений от сервера.)
+            </summary>
+        </member>
+        <member name="E:System.Net.Sockets.OSP.OSPClient.OnMessageFullyReaded">
+            <summary>
+            Это событие происходит, когда заголовок и тело полностью прочитаны. (Только для неожиданных сообщений от сервера.)
+            </summary>
+        </member>
+        <member name="E:System.Net.Sockets.OSP.OSPClient.OnMessageProgressRead">
+            <summary>
+            Это событие происходит при обновлении прогресса. (Только для неожиданных сообщений от сервера.)
+            </summary>
+        </member>
+        <member name="E:System.Net.Sockets.OSP.OSPClient.OnResponseProgressRead">
+            <summary>
+            Это событие происходит, когда прогресс запроса обновляется. 
+            </summary>
+        </member>
+        <member name="T:System.Net.Sockets.OSP.OSPServer">
+            <summary>
+            Это сервер. Принимает подключения и данные, обеспечивая шифрование.
+            </summary>
+        </member>
+        <member name="M:System.Net.Sockets.OSP.OSPServer.Start(System.Net.Sockets.OSP.OSPServer.GetAnswerOnMessage)">
+            <summary>
+            С этого всё начинается. Запустите сервер!
+            </summary>
+            <param name="messageAnswerHandler">Составьте свою логику ответов.</param>
+        </member>
+        <member name="M:System.Net.Sockets.OSP.OSPServer.Answer(System.Net.Sockets.OSP.HeaderMessage,System.Net.Sockets.OSP.OSPStatusCode,System.Byte[])">
+            <summary>
+            Используйте эту функцию, чтобы ответить клиенту на его запрос.
+            </summary>
+            <param name="requestHeader">Заголовок, который отправлял Вам клиент.</param>
+            <param name="statusCode">Статус-код</param>
+            <param name="data">Ваши данные. (Необязательно)</param>
+            <returns></returns>
+        </member>
+        <member name="M:System.Net.Sockets.OSP.OSPServer.Send(System.Byte[],System.Net.IPEndPoint,System.String)">
+            <summary>
+            Отправьте данные клиенту без его запроса. (Данные можно отправлять только подключенным клиентам)
+            </summary>
+            <param name="data">Данные для отправки.</param>
+            <param name="ip">IP клиента, которому Вы хотите отправить данные.</param>
+            <param name="description">Универсальное значение для вас.</param>
+        </member>
+        <member name="E:System.Net.Sockets.OSP.OSPServer.OnNewMessage">
+            <summary>
+            Это событие происходит, когда заголовок полностью прочитывается. Не содержит тело запроса.
+            </summary>
+        </member>
+        <member name="E:System.Net.Sockets.OSP.OSPServer.OnMessageFullyReaded">
+            <summary>
+            Это событие происходит, когда заголовок и тело полностью прочитаны.
+            </summary>
+        </member>
+        <member name="E:System.Net.Sockets.OSP.OSPServer.OnNewClientConnected">
+            <summary>
+            Это событие происходит, когда новый клиент подключился к серверу, и они произвели успешный обмен ключами шифрования.
+            </summary>
+        </member>
+        <member name="E:System.Net.Sockets.OSP.OSPServer.OnClientDisconnected">
+            <summary>
+            Это событие происходит, когда клиент отключается от сервера.
+            </summary>
+        </member>
+        <member name="T:System.Net.Sockets.OSP.OSPResponse">
+            <summary>
+            Представляет класс, в котором лежит ответ от сервера. Иногда сервер может вернуть статус-код без данных.   
+            </summary>
+        </member>
+    </members>
+</doc>
