@@ -7,10 +7,4 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Reference Include="OSPLibrary">
-      <HintPath>bin\Release\net8.0\publish\OSPLibrary.dll</HintPath>
-    </Reference>
-  </ItemGroup>
-
 </Project>
