@@ -1,0 +1,4 @@
+C:\Users\User\source\repos\OSPLibrary\OSPLibrary\bin\Release\net8.0\publish\OSPLibrary.dll
+C:\Users\User\source\repos\OSPLibrary\OSPLibrary\bin\Release\net8.0\publish\OSPLibrary.deps.json
+C:\Users\User\source\repos\OSPLibrary\OSPLibrary\bin\Release\net8.0\publish\OSPLibrary.pdb
+C:\Users\User\source\repos\OSPLibrary\OSPLibrary\bin\Release\net8.0\publish\OSPLibrary.xml
