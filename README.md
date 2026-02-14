@@ -11,7 +11,7 @@
        public static void Main()
        {
           OSPServer server = new OSPServer("192.168.1.1", 1111);
-          server.Start(MessageHandler);
+          server.Start(MessageHandler, AnyPrivateRSAKey);
           Console.ReadKey();
        }
 
@@ -44,7 +44,7 @@
         public static async Task Main()
         {
             OSPClient client = new OSPClient("192.168.1.1", 1111);
-            await client.Start();
+            await client.Start(PublicRSAKey);
           OSPResponse response =  await client.Send(FromText("Hello!"));
     
             if (response.Data != null) Console.WriteLine(ToText(response.Data));
