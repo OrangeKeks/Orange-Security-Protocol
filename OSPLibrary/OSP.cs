@@ -45,16 +45,17 @@ namespace System.Net.Sockets.OSP
 
     public class OSPSettings
     {
-        public int RSA_Size { get; private set; } 
+      
 
 
-        public int AES_Size { get; private set; }
+      
 
 
         public int SendBufferSize { get; set; } = 262144;
 
         public int ReceiveBufferSize { get; set; } = 262144;
 
+        public ECCurve Curve { get; set; } = ECCurve.NamedCurves.nistP256;
 
 
         /// <summary>
@@ -62,35 +63,7 @@ namespace System.Net.Sockets.OSP
         /// </summary>
         /// <param name="size">Размер ключа</param>
         /// <exception cref="ArgumentException">Ошибка при создании ключа.</exception>
-        public void SetRSAKeySise(int size)
-        {
-            if (size > 16384) throw new ArgumentException("Чересчур большой размер ключа RSA.");
-            if (size % 64 == 0)
-            {
-                if (size % 8 == 0)
-                {
-                    RSA_Size = size;
-                    AES_Size = size / 8;
-                    if (AES_Size > 256) AES_Size = 256;
-                }
-            }
-            else throw new ArgumentException("Неправильный размер ключа.");
-        }
-        public void SetAESKeySize(int size)
-        {
-            if (size > 256) throw new ArgumentException("AES не поддерживает размеры больше 256 бит.");
-            if (size % 8 == 0)
-            {
-                int del = RSA_Size / size;
-                if (del >= 8)
-                {
-                    AES_Size = del;
-                }
-                else throw new ArgumentException("Слишком большой размер ключа для RSA.");
-            }
-            else throw new ArgumentException("Неправильный размер ключа.");
-        }
-
+       
 
        
     }
@@ -103,7 +76,14 @@ namespace System.Net.Sockets.OSP
 
         public OSPStatusCode Code { get; set; } = OSPStatusCode.OK;
     }
-    public class HeaderMessage
+
+    internal class DataHeader
+    {
+        public byte[]? Nonce { get; set; } = new byte[12];
+        public byte[]? Tag { get; set; } = new byte[16];
+        public byte[]? Value { get; set; } 
+    }
+    public class OSPHeaderMessage
     {
         public uint UniID { get; set; }
         public OSPStatusCode MessageStatus { get; set; }
@@ -111,10 +91,13 @@ namespace System.Net.Sockets.OSP
         public required string Description { get; set; }
         public required IPEndPoint IPEndPoint { get; set; }
         internal OSPMessageType MessageType { get; set; }
+        internal byte[]? DataNonce { get; set; }
+        internal byte[]? DataTag {  get; set; }
     }
-    public class MessageEventArgs
+
+    public class OSPMessageEventArgs
     {
-        public required HeaderMessage Header { get; set; }
+        public required OSPHeaderMessage Header { get; set; }
 
         public byte[]? Data { get; set; }
     }
@@ -126,7 +109,7 @@ namespace System.Net.Sockets.OSP
         public bool OnlyStatusCode { get; set; }
         public OSPStatusCode StatusCode { get; set; }
 
-        public required HeaderMessage Header { get; set; }
+        public required OSPHeaderMessage Header { get; set; }
         public byte[]? Data { get; set; }
     }
 

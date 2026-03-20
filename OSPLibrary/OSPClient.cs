@@ -37,8 +37,7 @@ namespace System.Net.Sockets.OSP
         public Task Start(string PublicMasterKey)
         {
 
-            Tools.aes.GenerateIV();
-            Tools.aes.GenerateKey();
+          
             Tools.Master_RSA.ImportRSAPublicKey(Convert.FromBase64String(PublicMasterKey), out _);
 
 
@@ -50,7 +49,8 @@ namespace System.Net.Sockets.OSP
             stream.ReadExactly(publicKeyLength, 0, 4);
             byte[] publicKey = new byte[BitConverter.ToInt32(publicKeyLength)];
             stream.ReadExactly(publicKey);
-            Tools.rsa_provider.ImportRSAPublicKey(publicKey, out _);
+           
+          
             List<byte> data = new List<byte>();
             int byteRead;
             while ((byteRead = stream.ReadByte()) != -1)
@@ -73,20 +73,25 @@ namespace System.Net.Sockets.OSP
             bool isSecured = Tools.Master_RSA.VerifyData(publicKey, data.ToArray(), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
             if (!isSecured) { stream.Close(); tcp_client.Close(); throw new Exception("Недостоверная подпись. Соединение разорвано."); }
      
-
+            using (var otherKey = ECDiffieHellman.Create(Settings.Curve))
+            {
+                otherKey.ImportSubjectPublicKeyInfo(publicKey, out _);
+           
+                Tools.Key = SHA256.HashData(Tools._ecndhe.DeriveRawSecretAgreement(otherKey.PublicKey));
+             
+            }
+            
             byte[] terminator = { 0x1A, 0x2B, 0x3C, 0x4D };
        
            
 
-            byte[] ecnryptedKey = Tools.rsa_provider.Encrypt(Tools.aes.Key, RSAEncryptionPadding.Pkcs1);
+           
             List<byte> sendData = new List<byte>();
-            sendData.AddRange(ecnryptedKey);
+
+            sendData.AddRange(Tools._ecndhe.ExportSubjectPublicKeyInfo());
             sendData.AddRange(terminator);
-            sendData.AddRange(Tools.aes.IV);
-            sendData.Add(0x1E);
-            sendData.Add(0x1F);
-            sendData.Add(0x1E);
-            sendData.Add(0x1F);
+         
+            
             stream.Write(sendData.ToArray());
             stream.Flush();
             Task.Run(() => ReadData());
@@ -114,8 +119,16 @@ namespace System.Net.Sockets.OSP
                 try
                 {
                     if (stream == null) return;
-                    byte[] headerBuffer = new byte[4];
 
+                    byte[] nonce = new byte[12];
+                    byte[] tag = new byte[16];
+
+                    await stream.ReadExactlyAsync(nonce, 0, nonce.Length);
+
+                    await stream.ReadExactlyAsync(tag, 0, tag.Length);
+
+                    byte[] headerBuffer = new byte[4];
+                    
 
                     await stream.ReadExactlyAsync(headerBuffer, 0, headerBuffer.Length);
 
@@ -125,8 +138,8 @@ namespace System.Net.Sockets.OSP
 
                     byte[] HedBuffer = new byte[headerLength];
                     await stream.ReadExactlyAsync(HedBuffer, 0, HedBuffer.Length);
-                    byte[] decoded = Tools.Decrypt(HedBuffer);
-                    HeaderMessage header = GlobalTools.MakeHeaderFromResponse(decoded, IPEndPoint.Parse($"{_ip}:{_port}"));
+                    byte[] decoded = Tools.Decrypt(HedBuffer, nonce, tag);
+                    OSPHeaderMessage header = GlobalTools.MakeHeaderFromResponse(decoded, IPEndPoint.Parse($"{_ip}:{_port}"));
 
                     if (header.MessageType == OSPMessageType.AnswerFromServer)
                     {
@@ -194,9 +207,9 @@ namespace System.Net.Sockets.OSP
                                 if (response == null)
                                 {
 
-                                    MessageEventArgs args = new MessageEventArgs()
+                                    OSPMessageEventArgs args = new OSPMessageEventArgs()
                                     {
-                                        Data = Tools.Decrypt(data.ToArray()),
+                                        Data = Tools.Decrypt(data.ToArray(), header.DataNonce!, header.DataTag!),
                                         Header = header,
 
                                     };
@@ -206,7 +219,7 @@ namespace System.Net.Sockets.OSP
                                 }
                                 else
                                 {
-                                    byte[] buffer = Tools.Decrypt(data.ToArray());
+                                    byte[] buffer = Tools.Decrypt(data.ToArray(), header.DataNonce!, header.DataTag!);
                                     _ = Task.Run(() => response.SetResult(new OSPResponse() { Data = buffer, Header = header, StatusCode = header.MessageStatus, OnlyStatusCode = false }));
                                     data.Clear();
 
@@ -232,10 +245,12 @@ namespace System.Net.Sockets.OSP
             tcp_client.NoDelay = true;
             tcp_client.ReceiveBufferSize = Settings.ReceiveBufferSize;
             tcp_client.SendBufferSize = Settings.SendBufferSize;
-            Settings.SetRSAKeySise(2048);
-            Tools.rsa_provider = RSA.Create();
-            Tools.rsa_provider.KeySize = Settings.RSA_Size;
-            Tools.aes.KeySize = Settings.AES_Size;
+            Tools._ecndhe = ECDiffieHellman.Create(Settings.Curve);
+           // Settings.SetRSAKeySise(2048);
+
+          //  Tools.rsa_provider = RSA.Create();
+          //  Tools.rsa_provider.KeySize = Settings.RSA_Size;
+          //  Tools.aes.KeySize = Settings.AES_Size;
 
             _ip = ip;
             _port = port;
@@ -255,7 +270,7 @@ namespace System.Net.Sockets.OSP
             var tcs = new TaskCompletionSource<OSPResponse>();
             if (stream == null) return await tcs.Task;
             if (data == null || data.Length == 0) throw new Exception("Данные отсутствуют или их количество равно нулю!");
-            byte[] endData = Tools.Encrypt(data);
+            var endData = Tools.Encrypt(data);
 
 
          
@@ -263,7 +278,7 @@ namespace System.Net.Sockets.OSP
             _allRequests[SendDataNum] = tcs;
 
             await _writeLock.WaitAsync();
-            await stream.WriteAsync(MakeRequest(description is null ? "" : description, OSPStatusCode.None, endData, SendDataNum, OSPMessageType.MessageFromClient));
+            await stream.WriteAsync(MakeRequest(description is null ? "" : description, OSPStatusCode.None, SendDataNum, OSPMessageType.MessageFromClient, new DataHeader() { Nonce = endData.nonce, Tag = endData.tag, Value = endData.ciphertext }));
             await stream.FlushAsync();
             _writeLock.Release();
 
@@ -282,10 +297,10 @@ namespace System.Net.Sockets.OSP
 
       
 
-        byte[] MakeRequest(string description, OSPStatusCode code, byte[] body, uint ID, OSPMessageType type)
+        byte[] MakeRequest(string description, OSPStatusCode code, uint ID, OSPMessageType type, DataHeader data)
         {
 
-            int bodyLength = body.Length;
+            int bodyLength = data.Value!.Length;
             if (String.IsNullOrEmpty(description)) description = "n";
             else
             {
@@ -296,13 +311,23 @@ namespace System.Net.Sockets.OSP
             }
             string header = $"{ID} {bodyLength} {description} {(int)code} {(int)type}";
 
-            byte[] headerbytes = Tools.Encrypt(Encoding.UTF8.GetBytes(header));
+            var byted = Encoding.UTF8.GetBytes(header);
+            byte[] packet = new byte[12 + 16 + byted.Length];
+
+            Buffer.BlockCopy(data.Nonce!, 0, packet, 0, 12);
+            Buffer.BlockCopy(data.Tag!, 0, packet, 12, 16);
+            Buffer.BlockCopy(byted, 0, packet, 28, byted.Length);
+
+
+            var headerbytes = Tools.Encrypt(packet);
 
             List<byte> requestBytes = new List<byte>();
-            requestBytes.AddRange(BitConverter.GetBytes(headerbytes.Length));
-            requestBytes.AddRange(headerbytes);
-
-            requestBytes.AddRange(body);
+            requestBytes.AddRange(headerbytes.nonce);
+            requestBytes.AddRange(headerbytes.tag);
+            requestBytes.AddRange(BitConverter.GetBytes(headerbytes.ciphertext.Length));
+            requestBytes.AddRange(headerbytes.ciphertext);
+            requestBytes.AddRange(data.Value);
+           // requestBytes.AddRange();
 
             return requestBytes.ToArray();
         }
@@ -332,7 +357,7 @@ namespace System.Net.Sockets.OSP
                 tcp_client.Close();
                if (stream != null) stream.Close();
                 Tools.rsa_provider.Dispose();
-                Tools.aes.Dispose();
+              
                 _allRequests.Clear();
 
 
@@ -353,16 +378,16 @@ namespace System.Net.Sockets.OSP
 
         // New Message Event
 
-        protected virtual void NewMessageSent(HeaderMessage eventArgs)
+        protected virtual void NewMessageSent(OSPHeaderMessage eventArgs)
 
         {
             NewMessageEvent? msg = OnNewMessage;
             if (msg != null)
             {
-                msg(new MessageEventArgs() { Header = eventArgs, Data = null });
+                msg(new OSPMessageEventArgs() { Header = eventArgs, Data = null });
             }
         }
-        public delegate void NewMessageEvent(MessageEventArgs args);
+        public delegate void NewMessageEvent(OSPMessageEventArgs args);
         /// <summary>
         /// Это событие происходит, когда заголовок полностью прочитывается. Не содержит тело запроса. (Только для неожиданных сообщений от сервера.)
         /// </summary>
@@ -370,7 +395,7 @@ namespace System.Net.Sockets.OSP
 
 
         // Message FullyReaded
-        protected virtual void MessageFullyReaded(MessageEventArgs args)
+        protected virtual void MessageFullyReaded(OSPMessageEventArgs args)
         {
 
             MessageFullyReadedEvent? msg = OnMessageFullyReaded;
@@ -379,7 +404,7 @@ namespace System.Net.Sockets.OSP
                 msg(args);
             }
         }
-        public delegate void MessageFullyReadedEvent(MessageEventArgs args);
+        public delegate void MessageFullyReadedEvent(OSPMessageEventArgs args);
         /// <summary>
         /// Это событие происходит, когда заголовок и тело полностью прочитаны. (Только для неожиданных сообщений от сервера.)
         /// </summary>

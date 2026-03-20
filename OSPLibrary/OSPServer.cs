@@ -1,4 +1,6 @@
-﻿
+﻿using System.Net;
+using System.Net.Sockets;
+using System.Net.Sockets.OSP;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -12,7 +14,7 @@ namespace System.Net.Sockets.OSP
     {
         public  OSPSettings Settings = new OSPSettings();
 
-        public delegate Task<OSPServerAnswer> GetAnswerOnMessage(MessageEventArgs args);
+        public delegate Task<OSPServerAnswer> GetAnswerOnMessage(OSPMessageEventArgs args);
           GetAnswerOnMessage? messageHandler;
 
         byte[]? masterKey = null;
@@ -45,9 +47,13 @@ namespace System.Net.Sockets.OSP
 
 
 
-                _server.Settings.SetRSAKeySise(2048);
-                Tools.rsa_provider.KeySize = _server.Settings.RSA_Size;
+               // _server.Settings.SetRSAKeySise(2048);
+                
+               // Tools.rsa_provider.KeySize = _server.Settings.RSA_Size;
+
+                
                 Tools.Master_RSA.ImportRSAPrivateKey(_server.masterKey, out _);
+                Tools._ecndhe = ECDiffieHellman.Create(_server.Settings.Curve);
                 client.NoDelay = true;
                 client.SendBufferSize = _server.Settings.SendBufferSize;    
                 client.ReceiveBufferSize = _server.Settings.ReceiveBufferSize;  
@@ -55,8 +61,7 @@ namespace System.Net.Sockets.OSP
                 stream = client.GetStream();
            
 
-                Tools.aes.Mode = CipherMode.CBC;
-                Tools.aes.Padding = PaddingMode.PKCS7;
+              
                 _ = Task.Run(() => ClientConnection(client));
             }
 
@@ -72,10 +77,10 @@ namespace System.Net.Sockets.OSP
                   if (client.Client.RemoteEndPoint != null)  _ip = (IPEndPoint)client.Client.RemoteEndPoint;
 
 
-
+                
                     List<byte> data = new List<byte>();
                     int bytesRead = 0;
-                    byte[] publicKey = Tools.rsa_provider.ExportRSAPublicKey();
+                    byte[] publicKey = Tools._ecndhe.ExportSubjectPublicKeyInfo();
                     byte[] sign = Tools.Master_RSA.SignData(publicKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
                     data.AddRange(BitConverter.GetBytes(publicKey.Length));
                     data.AddRange(publicKey);
@@ -104,27 +109,35 @@ namespace System.Net.Sockets.OSP
                                 data.RemoveAt(data.Count - 1);
                                 data.RemoveAt(data.Count - 1);
 
-                                Tools.aes.Key = Tools.rsa_provider.Decrypt(data.ToArray(), RSAEncryptionPadding.Pkcs1);
+                                using (ECDiffieHellman other = ECDiffieHellman.Create(_server.Settings.Curve))
+                                {
+                                    try
+                                    {
+                                        other.ImportSubjectPublicKeyInfo(data.ToArray(), out _);
+                                        byte[] shared = Tools._ecndhe.DeriveRawSecretAgreement(other.PublicKey);
+                                        Tools.Key = SHA256.HashData(shared);
+                                        
+                                    }
+                                    catch
+                                    {
+                                        return;
+                                    }
+                                  
+                                }
+                              
 
 
                                 data.Clear();
-                                continue;
+                                break;
 
                             }
-                            else if (data[data.Count - 1] == 0x1F && data[data.Count - 2] == 0x1E && data[data.Count - 3] == 0x1F && data[data.Count - 4] == 0x1E)
-                            {
-                                data.RemoveAt(data.Count - 1);
-                                data.RemoveAt(data.Count - 1);
-                                data.RemoveAt(data.Count - 1);
-                                data.RemoveAt(data.Count - 1);
-                                break;
-                            }
+                           
                         }
 
 
                     }
 
-                    Tools.aes.IV = data.ToArray();
+                 
 
 
 
@@ -151,7 +164,14 @@ namespace System.Net.Sockets.OSP
                     while (true)
                     {
 
-                        HeaderMessage header;
+                        OSPHeaderMessage header;
+                        byte[] nonce = new byte[12];
+                        byte[] tag = new byte[16];
+
+                        await stream.ReadExactlyAsync(nonce, 0, nonce.Length);
+
+                        await stream.ReadExactlyAsync(tag, 0, tag.Length);
+
                         byte[] headerBuffer = new byte[4];
 
                         await stream.ReadExactlyAsync(headerBuffer, 0, headerBuffer.Length);
@@ -160,7 +180,7 @@ namespace System.Net.Sockets.OSP
                         byte[] HedBuffer = new byte[headerLength];
                         await stream.ReadExactlyAsync(HedBuffer, 0, HedBuffer.Length);
 
-                        byte[] decoded = Tools.Decrypt(HedBuffer);
+                        byte[] decoded = Tools.Decrypt(HedBuffer, nonce, tag);
                         header = GlobalTools.MakeHeaderFromResponse(decoded, client.Client.RemoteEndPoint is null ? IPEndPoint.Parse("0.0.0.0:1") : (IPEndPoint)client.Client.RemoteEndPoint);
 
                         if (header.MessageType != OSPMessageType.MessageFromClient) throw new Exception("Атака злоумышленника.");
@@ -170,6 +190,7 @@ namespace System.Net.Sockets.OSP
                             _server.NewMessageSent(header);
 
 
+                       
                         byte[] dataBuffer = new byte[header.DataLength];
 
                         await stream.ReadExactlyAsync(dataBuffer, 0, dataBuffer.Length);
@@ -180,9 +201,9 @@ namespace System.Net.Sockets.OSP
 
 
 
-                        MessageEventArgs args = new MessageEventArgs()
+                        OSPMessageEventArgs args = new OSPMessageEventArgs()
                         {
-                            Data = Tools.Decrypt(dataBuffer),
+                            Data = Tools.Decrypt(dataBuffer, header.DataNonce!, header.DataTag!),
                             Header = header,
 
                         };
@@ -244,9 +265,10 @@ namespace System.Net.Sockets.OSP
                 if (String.IsNullOrEmpty(description)) description = "n";
 
 
-                byte[] encrypted = Tools.Encrypt(data);
+                var encryption = Tools.Encrypt(data);
 
-                Send(MakeRequest(description, OSPStatusCode.None, SendDataNum, OSPMessageType.MessageFromServer,encrypted));
+              
+                Send(MakeRequest(description, OSPStatusCode.None, SendDataNum, OSPMessageType.MessageFromServer, new DataHeader() { Value = encryption.ciphertext, Nonce = encryption.nonce, Tag = encryption.tag}));
                 SendDataNum++;
 
                 return Task.CompletedTask;
@@ -273,7 +295,7 @@ namespace System.Net.Sockets.OSP
                     _writeLock.Dispose();
                     stream.Close();
                     Tools.rsa_provider.Dispose();
-                    Tools.aes.Dispose();
+                 
 
 
 
@@ -285,10 +307,10 @@ namespace System.Net.Sockets.OSP
 
           
 
-            byte[] MakeRequest(string description, OSPStatusCode code, uint ID, OSPMessageType type, byte[]? body = null)
+            byte[] MakeRequest(string description, OSPStatusCode code, uint ID, OSPMessageType type, DataHeader data)
             {
                 int bodyLength = 0;
-                if (body != null) bodyLength = body.Length;
+                if (data.Value != null) bodyLength = data.Value.Length;
 
                 if (String.IsNullOrEmpty(description)) description = "n";
                 else
@@ -299,31 +321,45 @@ namespace System.Net.Sockets.OSP
                     }
                 }
                 string header = $"{ID} {bodyLength} {description} {(int)code} {(int)type}";
+          
+                var byted = Encoding.UTF8.GetBytes(header);
+                byte[] packet = new byte[12 + 16 + byted.Length]; 
 
-                byte[] headerbytes = Tools.Encrypt(Encoding.UTF8.GetBytes(header));
+                Buffer.BlockCopy(data.Nonce!, 0, packet, 0, 12);
+                Buffer.BlockCopy(data.Tag!, 0, packet, 12, 16);
+                Buffer.BlockCopy(byted, 0, packet, 28, byted.Length);
+
+                        
+                var headerbytes = Tools.Encrypt(packet );
 
                 List<byte> requestBytes = new List<byte>();
-                requestBytes.AddRange(BitConverter.GetBytes(headerbytes.Length));
-                requestBytes.AddRange(headerbytes);
+                requestBytes.AddRange(headerbytes.nonce);
+                requestBytes.AddRange(headerbytes.tag);
+                requestBytes.AddRange(BitConverter.GetBytes(headerbytes.ciphertext.Length));
+                requestBytes.AddRange(headerbytes.ciphertext);
 
-                if (body != null) requestBytes.AddRange(body);
+                if (data.Value != null) requestBytes.AddRange(data.Value);
 
                 return requestBytes.ToArray();
             }
 
+            
 
             public Task Answer(uint ID, OSPStatusCode statusCode, byte[]? data = null)
             {
                 if (data != null)
                 {
-                    byte[] encrypted = Tools.Encrypt(data);
-                    byte[] toSend = MakeRequest(string.Empty, statusCode, ID, OSPMessageType.AnswerFromServer,encrypted);
+
+                    var encrypted = Tools.Encrypt(data);
+                  
+                    byte[] toSend = MakeRequest(string.Empty, statusCode, ID, OSPMessageType.AnswerFromServer, new DataHeader() { Value = encrypted.ciphertext , Nonce = encrypted.nonce, Tag = encrypted.tag });
 
                     Send(toSend);
                 }
                 else
                 {
-                    byte[] toSend = MakeRequest(string.Empty, statusCode, ID, OSPMessageType.AnswerFromServer, null);
+                 
+                    byte[] toSend = MakeRequest(string.Empty, statusCode, ID, OSPMessageType.AnswerFromServer , new DataHeader() { Value = null });
                     Send(toSend);
                 }
 
@@ -456,16 +492,16 @@ namespace System.Net.Sockets.OSP
 
 
         // New Message Event
-        protected virtual void NewMessageSent(HeaderMessage eventArgs)
+        protected virtual void NewMessageSent(OSPHeaderMessage eventArgs)
         {
             all_requests.Add(eventArgs.IPEndPoint.ToString(), eventArgs.UniID);
             NewMessageEvent? msg = OnNewMessage;
             if (msg != null)
             {
-                msg(new MessageEventArgs() { Header = eventArgs, Data = null });
+                msg(new OSPMessageEventArgs() { Header = eventArgs, Data = null });
             }
         }
-        public delegate void NewMessageEvent(MessageEventArgs args);
+        public delegate void NewMessageEvent(OSPMessageEventArgs args);
         /// <summary>
         /// Это событие происходит, когда заголовок полностью прочитывается. Не содержит тело запроса.
         /// </summary>
@@ -473,7 +509,7 @@ namespace System.Net.Sockets.OSP
 
 
         // Message FullyReaded
-        protected virtual void MessageFullyReaded(MessageEventArgs args)
+        protected virtual void MessageFullyReaded(OSPMessageEventArgs args)
         {
 
             all_requests.Remove(args.Header.IPEndPoint.ToString());
@@ -484,7 +520,7 @@ namespace System.Net.Sockets.OSP
                 msg(args);
             }
         }
-        public delegate void MessageFullyReadedEvent(MessageEventArgs args);
+        public delegate void MessageFullyReadedEvent(OSPMessageEventArgs args);
         /// <summary>
         /// Это событие происходит, когда заголовок и тело полностью прочитаны.
         /// </summary>
