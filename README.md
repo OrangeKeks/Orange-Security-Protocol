@@ -1,5 +1,5 @@
 # Orange-Security-Protocol
-— это интернет-протокол, надстройка над TCP, которая обеспечивает автоматическое шифрование и удобство в использовании.
+— это интернет-протокол прикладного уровня над TCP, который обеспечивающий автоматическое шифрование и упрощает взаимодействие между двумя узлами.
 
 
 # Быстрое начало
@@ -15,7 +15,7 @@
           Console.ReadKey();
        }
 
-       public static async Task<OSPServerAnswer> MessageHandler(MessageEventArgs args)
+       public static async Task<OSPServerAnswer> MessageHandler(OSPMessageEventArgs args)
       {
         OSPServerAnswer answer = new OSPServerAnswer();
         if (args.Data != null)
@@ -59,8 +59,11 @@
     }
 
 
-
 ## Основные возможности
+
+- Быстрая генерация пары RSA-ключей для подписи:
+  
+    `var keys = OSPSecurity.GenerateRSAMasterKeys(RSAKeySize);`
 
 - Описание сообщения:
   
@@ -86,6 +89,6 @@
 
 ## Безопасность
 
-- Использование RSA и AES для шифрования.
-- Использование подписи, которую передаёт сервер.
+- Использование ECDH и AES-GCM для шифрования.
+- Использование RSA-подписи.
 - Нумерация для предотвращения использования старых пакетов.
