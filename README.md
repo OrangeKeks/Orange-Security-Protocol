@@ -136,23 +136,23 @@
             Console.WriteLine("Download Progress: {0}%", Progress * 100);
        }
 
- - Программное изменение скорости:
+- Программное изменение скорости:
+     
+  # Клиент
     
-      # Клиент
+       client.Settings.DefaultEgressBitrateMbps = 200;
     
-       `client.Settings.DefaultEgressBitrateMbps = 200;`
-    
-       `client.Settings.DefaultIngressBitrateMbps = 200;`
+       client.Settings.DefaultIngressBitrateMbps = 200;
 
-      # Сервер
+  # Сервер
         
-       `server.Settings.DefaultEgressBitrateMbps = 200;`
+       server.Settings.DefaultEgressBitrateMbps = 200;
     
-       `server.Settings.DefaultIngressBitrateMbps = 200;`
+       server.Settings.DefaultIngressBitrateMbps = 200;
 
-       Изменение скорости для конкретного клиента:
+  Изменение скорости для конкретного клиента:
     
-       `server.UpdateBitrateMbpsWith(IPEndPoint, EgressBitrateMbps: 200, IngressBitrateMbps: 200);`
+       server.UpdateBitrateMbpsWith(IPEndPoint, EgressBitrateMbps: 200, IngressBitrateMbps: 200);
 
 
 ## Безопасность и криптография
