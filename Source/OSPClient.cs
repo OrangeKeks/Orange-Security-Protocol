@@ -75,7 +75,8 @@ namespace Orange.Security.Protocol
                         _scheduler.variables.SliceSize = BinaryPrimitives.ReadInt32LittleEndian(headerSys.Data.Value.Span.Slice(0, 4));
                         _scheduler.variables.FrameSizeThreshold = BinaryPrimitives.ReadInt32LittleEndian(headerSys.Data.Value.Span.Slice(4));
                         ushort maxPackets = BinaryPrimitives.ReadUInt16LittleEndian(headerSys.Data.Value.Span.Slice(8));
-                        int recPing = 1000 / maxPackets + 50; // 50 - stable value
+                        int recPing = 1000 / maxPackets + 100; // 50 - stable value
+                     
                         if (Settings.PingInvervalMilliseconds < recPing) pingTimer.Interval = recPing;
                     }
                 }
@@ -289,7 +290,13 @@ namespace Orange.Security.Protocol
                                 {
 
 
-                                    if (OnResponseProgressRead != null) _ = Task.Run(async () => await OnResponseProgressRead((double)current.countBytes / current.request.DataLength, _frame.UniID, frameBuffer.AsMemory(0, bytesRead))); 
+                                    if (OnResponseProgressRead != null)
+                                    {
+                                        double progress = 0;
+                                        if (current.countBytes == current.request.DataLength) progress = 1;
+                                        else progress = (double)current.countBytes / current.request.DataLength;
+                                        _ = Task.Run(async () => await OnResponseProgressRead(progress, _frame.UniID, frameBuffer.AsMemory(0, bytesRead)));
+                                    } 
                                     if (_frame.CurrentFrame == 1) { _ = Task.Run(() => response!.Value.answer.SetResult(new OSPResponse() { Data = null, Header = current.request, StatusCode = current.request.MessageStatus, OnlyStatusCode = true })); }
                                 }
                                 else
@@ -306,8 +313,7 @@ namespace Orange.Security.Protocol
                             if (_frame.CurrentFrame == _frame.MaxFrame)
                             {
 
-                                frameBuffer.Dispose();
-                                frameBuffer = null!;
+                                
                                 
                                 if (contains)
                                 {
@@ -558,6 +564,7 @@ namespace Orange.Security.Protocol
             {
                 try
                 {
+                    
                     source.Cancel();
                     _background.Wait(TimeSpan.FromSeconds(3));
 
@@ -565,6 +572,13 @@ namespace Orange.Security.Protocol
                 catch { }
                 finally
                 {
+                    foreach (var item in frames)
+                    {
+                        if (item.Value.data != null) item.Value.data.Dispose();
+                    }
+                    frames.Clear();
+                    if (frameBuffer != null) frameBuffer.Dispose();
+
                     source.Dispose();
                     _socket.Close();
                     if (_socket != null) _socket.Close();

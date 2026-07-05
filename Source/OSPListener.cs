@@ -22,6 +22,8 @@ namespace Orange.Security.Protocol
 
 
         private CancellationTokenSource _token = new CancellationTokenSource();
+
+       
         internal OSPListener(OSPServer server, Socket socket)
         {
 
@@ -40,7 +42,7 @@ namespace Orange.Security.Protocol
             _ = Task.Run(() => ClientConnection(_token.Token));
         }
 
-    
+
 
         private void PingPacketsCounter_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
         {
@@ -68,7 +70,7 @@ namespace Orange.Security.Protocol
         {
             try
             {
-                
+
                 if (client.RemoteEndPoint != null) _ip = (IPEndPoint)client.RemoteEndPoint;
                 else _ip = IPEndPoint.Parse("0.0.0.0:1");
 
@@ -250,6 +252,7 @@ namespace Orange.Security.Protocol
                                 {
 
                                     if (current.data != null) current.data.Dispose();
+
                                     frames.TryRemove(_frame.UniID, out _);
                                 }
 
@@ -265,7 +268,7 @@ namespace Orange.Security.Protocol
                     }
                     else if (base_header is OSPSystemHeader systemHeader)
                     {
-                       
+
                         if (systemHeader.Command == OSPConsts.PingCommand)
                         {
                             currentPingPacketsSent++;
@@ -274,15 +277,15 @@ namespace Orange.Security.Protocol
                         }
                         else if (systemHeader.Command == OSPConsts.CancelPacketCommand)
                         {
-                         
+
 
                             if (systemHeader.Data != null)
                             {
-                              
+
                                 var packetID = BinaryPrimitives.ReadUInt32LittleEndian(systemHeader.Data.Value.Span);
 
                                 _scheduler.CancelPacket(packetID);
-                               
+
                             }
 
                         }
@@ -297,6 +300,7 @@ namespace Orange.Security.Protocol
                 _server.ErrorOccured(_ip, ex);
                 _server.ClientDisconnected(_ip);
                 this.Dispose();
+
             }
 
 
@@ -344,10 +348,22 @@ namespace Orange.Security.Protocol
             if (_disposed) return;
             if (disposing)
             {
-
-                client.Dispose();
-                _scheduler.Dispose();
                 _token.Cancel();
+
+
+                foreach (var item in frames)
+                {
+                    if (item.Value.data != null) item.Value.data.Dispose();
+
+                }
+                if (frameBuffer != null) frameBuffer.Dispose();
+                frames.Clear();
+                client.Dispose();
+             
+                _scheduler.Dispose();
+
+
+
 
             }
             _disposed = true;

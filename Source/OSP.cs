@@ -88,8 +88,8 @@ namespace Orange.Security.Protocol
         private bool _disposed;
 
 
-        private int _position = 0;
-        public int Position => _position;
+        private long _position = 0;
+        public long Position => _position;
 
         public long Length => _length;
 
@@ -418,7 +418,7 @@ namespace Orange.Security.Protocol
         /// <summary>
         /// Максимально возможная длина полезной нагрузки. При выходе за порог соединение закрывается.
         /// </summary>
-        public ulong MaxReceiveDataLength { get; set; } = 1024 * 1024 * 500;
+        public long MaxReceiveDataLength { get; set; } = 1024 * 1024 * 500;
 
         /// <summary>
         /// Cообщения выше порога FramingThreshold будут попадать в FrameHandler. Очень сильно экономит память.
@@ -500,7 +500,7 @@ namespace Orange.Security.Protocol
         public OSPStatusCode MessageStatus { get; set; }
         public byte[] Description { get; set; } = null!;
         public IPEndPoint IPEndPoint { get; set; } = null!;
-        public ulong DataLength { get; set; }
+        public long DataLength { get; set; }
         internal OSPHeaderRequest()
         {
             

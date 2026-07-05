@@ -307,9 +307,9 @@ namespace Orange.Security.Protocol
 
                         await SendData(frameDataBuffer.AsMemory(0, chunk.Length + 54 + 16), false, chunk.Length);
 
-                      
 
-                        
+
+                    
 
 
                         OutgoingNum++;
@@ -348,7 +348,7 @@ namespace Orange.Security.Protocol
                 {
                     OnError?.Invoke(ex);
                     this.Dispose();
-
+                    throw;
                 }
             }
         }
@@ -1123,30 +1123,45 @@ namespace Orange.Security.Protocol
         protected virtual void Dispose(bool disposing)
         {
             if (_disposed) return;
-
+        
             if (disposing)
             {
-                _cts.Cancel();
+                
                 try
                 {
-                    _sender.Wait(TimeSpan.FromSeconds(variables.TimeoutSending));
+                    
+                    _cts.Cancel();
+                   
+                  
                 }
                 catch { }
                 finally
                 {
-                    _cts.Dispose();
+
+                
                     foreach (var item in Packets.Values)
                     {
+                        
                         item.Data?.ClearSource();
                         item.Data?.Dispose();
                     }
+                    lock (HighPriorityPackets)
+                    {
+                        foreach (var item in HighPriorityPackets)
+                        {
+                            if (item.data != null) item.data.Dispose();
+                        }
+                    }
+                    HighPriorityPackets.Clear();
                     Packets.Clear();
 
-                    network.Dispose();
+                    network.Close();
+
+
                     tools.Dispose();
-                 
 
 
+                    _cts.Dispose();
 
                     _disposed = true;
 

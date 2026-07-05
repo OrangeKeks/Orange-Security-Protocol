@@ -25,7 +25,7 @@ namespace Orange.Security.Protocol
             int pos = 0;
             uint numeric = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(pos)); pos += 4;
             OSPMessageType type = (OSPMessageType)data[pos++];
-            ulong dataLength = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(pos)); pos += 8;
+            long dataLength = BinaryPrimitives.ReadInt64LittleEndian(data.Slice(pos)); pos += 8;
             uint uniID = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(pos)); pos += 4;
             OSPStatusCode code = (OSPStatusCode)data[pos++];
             bool isFramed = data[pos++] != 0;
@@ -136,7 +136,7 @@ namespace Orange.Security.Protocol
 
             BinaryPrimitives.WriteUInt32LittleEndian(span.Slice(pos), NumericID); pos += 4;
             span[pos++] = (byte)type;
-            BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(pos), (ulong)bodyLength); pos += 8;
+            BinaryPrimitives.WriteInt64LittleEndian(span.Slice(pos), bodyLength); pos += 8;
             BinaryPrimitives.WriteUInt32LittleEndian(span.Slice(pos), uniID); pos += 4;
 
             span[pos++] = (byte)code;
