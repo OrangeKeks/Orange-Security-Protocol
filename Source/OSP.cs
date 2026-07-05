@@ -300,12 +300,12 @@ namespace Orange.Security.Protocol
     public static class OSPTools
     {
         /// <summary>
-        /// Генерирует пару ECDSA-ключей. Эти ключи можно использовать для подписи.
+        /// Генерирует пару ECDSA-ключей nistP256. Эти ключи можно использовать для подписи.
         /// </summary>
         /// <returns>BASE64-X509 публичный ключ и BASE64-PKCS8 приватный ключ</returns>
-        public static (string PublicX509Key, string PrivatePKCS8Key) GenerateECDSAMasterKeys(ECCurve curve)
+        public static (string PublicX509Key, string PrivatePKCS8Key) GenerateECDSAMasterKeys()
         {
-            using var ecdha = ECDsa.Create(curve);
+            using var ecdha = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             
             return (
                 Convert.ToBase64String(ecdha.ExportSubjectPublicKeyInfo()),

@@ -58,6 +58,12 @@ namespace Orange.Security.Protocol
             bool isSuccess = await _scheduler.Handshake(true, Convert.FromBase64String(PublicMasterKey));
 
             if (!isSuccess) throw new OSPException("Не удалось установить безопасное соединение с сервером.");
+
+            pingTimer = new System.Timers.Timer(Settings.PingInvervalMilliseconds);
+            pingTimer.AutoReset = true;
+            pingTimer.Elapsed += PingTimer_Elapsed;
+            pingTimer.Start();
+
             var header = await _scheduler.ReadHeader(IPEndPoint);
 
             if (header is OSPSystemHeader headerSys)
@@ -77,10 +83,7 @@ namespace Orange.Security.Protocol
             
             
             _background = Task.Run(() => ReadData(source.Token));
-            pingTimer = new System.Timers.Timer(Settings.PingInvervalMilliseconds);
-            pingTimer.AutoReset = true;
-            pingTimer.Elapsed += PingTimer_Elapsed;
-            pingTimer.Start();
+           
 
             IsConnected = true;
         }
