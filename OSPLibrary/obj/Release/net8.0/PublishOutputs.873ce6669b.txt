@@ -1,4 +1,0 @@
-E:\Programms\-VisualStudio-\Projects\OSPLibrary\OSPLibrary\bin\Release\net8.0\publish\OSPLibrary.dll
-E:\Programms\-VisualStudio-\Projects\OSPLibrary\OSPLibrary\bin\Release\net8.0\publish\OSPLibrary.deps.json
-E:\Programms\-VisualStudio-\Projects\OSPLibrary\OSPLibrary\bin\Release\net8.0\publish\OSPLibrary.pdb
-E:\Programms\-VisualStudio-\Projects\OSPLibrary\OSPLibrary\bin\Release\net8.0\publish\OSPLibrary.xml
