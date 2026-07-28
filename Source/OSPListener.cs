@@ -129,14 +129,7 @@ namespace Orange.Security.Protocol
                                 if (_server.Settings.DataStreaming)
                                 {
                                     frames[request.UniID] = (request, null!, 0);
-                                    OSPMessageEventArgs args = new OSPMessageEventArgs()
-                                    {
-                                        Data = null,
-                                        Header = request
-
-                                    };
-
-
+                                    
                                 }
                                 else frames[request.UniID] = (request, new NativeBytes((long)request.DataLength), 0);
 

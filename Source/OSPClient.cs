@@ -59,64 +59,13 @@ namespace Orange.Security.Protocol
 
             if (!isSuccess) throw new OSPException("Не удалось установить безопасное соединение с сервером.");
 
-            pingTimer = new System.Timers.Timer(Settings.PingInvervalMilliseconds);
-            pingTimer.AutoReset = true;
-            pingTimer.Elapsed += PingTimer_Elapsed;
-            pingTimer.Start();
-
-            var header = await _scheduler.ReadHeader(IPEndPoint);
-
-            if (header is OSPSystemHeader headerSys)
+            if (Settings.PingInvervalMilliseconds > 0)
             {
-                if (headerSys.Command == OSPConsts.HandshakeSettings)
-                {
-                    if (headerSys.Data != null)
-                    {
-                        _scheduler.variables.SliceSize = BinaryPrimitives.ReadInt32LittleEndian(headerSys.Data.Value.Span.Slice(0, 4));
-                        _scheduler.variables.FrameSizeThreshold = BinaryPrimitives.ReadInt32LittleEndian(headerSys.Data.Value.Span.Slice(4));
-                        ushort maxPackets = BinaryPrimitives.ReadUInt16LittleEndian(headerSys.Data.Value.Span.Slice(8));
-                        int recPing = 1000 / maxPackets + 100; // 50 - stable value
-                     
-                        if (Settings.PingInvervalMilliseconds < recPing) pingTimer.Interval = recPing;
-                    }
-                }
+                pingTimer = new System.Timers.Timer(Settings.PingInvervalMilliseconds);
+                pingTimer.AutoReset = true;
+                pingTimer.Elapsed += PingTimer_Elapsed;
+                pingTimer.Start();
             }
-            
-            
-            _background = Task.Run(() => ReadData(source.Token));
-           
-
-            IsConnected = true;
-        }
-
-
-        /// <summary>
-        /// Запускаем клиент, присоединяясь к серверу. Уязвимо к MitM атаке. 
-        /// </summary>
-        public async Task Start()
-        {
-
-        
-
-            _socket.NoDelay = true;
-            _socket.ReceiveBufferSize = Settings.ReceiveBufferSize;
-            _socket.SendBufferSize = Settings.SendBufferSize;
-            Tools._ecndhe = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256); 
-
-
-            await _socket.ConnectAsync(IPEndPoint);
-
-            _scheduler = new OSPStream(_socket, Tools, Settings, true);
-
-            bool isSuccess = await _scheduler.Handshake(true);
-
-            if (!isSuccess) throw new OSPException("Не удалось установить безопасное соединение с сервером.");
-
-
-            pingTimer = new System.Timers.Timer(Settings.PingInvervalMilliseconds);
-            pingTimer.AutoReset = true;
-            pingTimer.Elapsed += PingTimer_Elapsed;
-            pingTimer.Start();
 
             var header = await _scheduler.ReadHeader(IPEndPoint);
 
@@ -130,14 +79,66 @@ namespace Orange.Security.Protocol
                         _scheduler.variables.FrameSizeThreshold = BinaryPrimitives.ReadInt32LittleEndian(headerSys.Data.Value.Span.Slice(4));
                         ushort maxPackets = BinaryPrimitives.ReadUInt16LittleEndian(headerSys.Data.Value.Span.Slice(8));
                         int recPing = 1000 / maxPackets + 50; // 50 - stable value
-                        
+                     
                         if (Settings.PingInvervalMilliseconds < recPing) pingTimer.Interval = recPing;
                     }
                 }
             }
 
             _background = Task.Run(() => ReadData(source.Token));
-            
+           
+            IsConnected = true;
+        }
+
+
+        /// <summary>
+        /// Запускаем клиент, присоединяясь к серверу. Уязвимо к MitM атаке. 
+        /// </summary>
+        public async Task Start()
+        {
+
+
+            _socket.NoDelay = true;
+            _socket.ReceiveBufferSize = Settings.ReceiveBufferSize;
+            _socket.SendBufferSize = Settings.SendBufferSize;
+            Tools._ecndhe = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+
+
+            await _socket.ConnectAsync(IPEndPoint);
+
+            _scheduler = new OSPStream(_socket, Tools, Settings, true);
+            _scheduler.OnError += (ex) => ErrorOccured(ex);
+            bool isSuccess = await _scheduler.Handshake(true);
+
+            if (!isSuccess) throw new OSPException("Не удалось установить безопасное соединение с сервером.");
+
+            if (Settings.PingInvervalMilliseconds > 0)
+            {
+                pingTimer = new System.Timers.Timer(Settings.PingInvervalMilliseconds);
+                pingTimer.AutoReset = true;
+                pingTimer.Elapsed += PingTimer_Elapsed;
+                pingTimer.Start();
+            }
+
+            var header = await _scheduler.ReadHeader(IPEndPoint);
+
+            if (header is OSPSystemHeader headerSys)
+            {
+                if (headerSys.Command == OSPConsts.HandshakeSettings)
+                {
+                    if (headerSys.Data != null)
+                    {
+                        _scheduler.variables.SliceSize = BinaryPrimitives.ReadInt32LittleEndian(headerSys.Data.Value.Span.Slice(0, 4));
+                        _scheduler.variables.FrameSizeThreshold = BinaryPrimitives.ReadInt32LittleEndian(headerSys.Data.Value.Span.Slice(4));
+                        ushort maxPackets = BinaryPrimitives.ReadUInt16LittleEndian(headerSys.Data.Value.Span.Slice(8));
+                        int recPing = 1000 / maxPackets + 50; // 50 - stable value
+
+                        if (Settings.PingInvervalMilliseconds < recPing) pingTimer.Interval = recPing;
+                    }
+                }
+            }
+
+            _background = Task.Run(() => ReadData(source.Token));
 
             IsConnected = true;
         }

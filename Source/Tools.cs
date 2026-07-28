@@ -245,18 +245,12 @@ namespace Orange.Security.Protocol
             }
 
 
-
-
             Span<byte> tag = stackalloc byte[16];
             _tools.Encrypt(span.Slice(16 + 5 + 16), tag);
 
             tag.CopyTo(span.Slice(16 + 5));
 
             return bs;
-
-
-
-
 
         }
 
@@ -272,8 +266,8 @@ namespace Orange.Security.Protocol
         private ulong _sendNonce;
         private ulong _recvNonce;
 
-        private readonly object _sendLock = new object();
-        private readonly object _recvLock = new object();
+        private SpinLock _sendLock = new(false);
+        private SpinLock _recvLock = new(false);
 
         private AesGcm aesGcmEncrypt = null!;
         private AesGcm aesGcmDecrypt = null!;
@@ -299,19 +293,24 @@ namespace Orange.Security.Protocol
         {
             if (aesGcmEncrypt == null) aesGcmEncrypt = new AesGcm(Key, 16);
             Span<byte> nonce = stackalloc byte[12];
-            nonce.Clear();
+            
 
-            lock (_sendLock)
+            bool taken = false;
+            try
             {
-
+                _sendLock.Enter(ref taken);
                 BinaryPrimitives.WriteUInt64BigEndian(nonce.Slice(4), (ulong)_sendNonce);
 
                 _sendNonce += 2;
 
                 aesGcmEncrypt.Encrypt(nonce, data, data, tag);
-
-
+            } 
+            finally
+            {
+                if (taken) _sendLock.Exit();
             }
+
+            
          
         }
 
@@ -320,18 +319,22 @@ namespace Orange.Security.Protocol
             if (aesGcmDecrypt == null) aesGcmDecrypt = new AesGcm(Key, 16);
 
             Span<byte> nonce = stackalloc byte[12];
-            nonce.Clear();
+            
 
-            lock (_recvLock)
+            bool taken = false;
+            try
             {
-
+                _recvLock.Enter(ref taken);
                 BinaryPrimitives.WriteUInt64BigEndian(nonce.Slice(4), (ulong)_recvNonce);
 
                 _recvNonce += 2;
 
                 aesGcmDecrypt.Decrypt(nonce, ciphertext, tag, ciphertext);
             }
-
+            finally
+            {
+                if (taken) _recvLock.Exit();
+            }
 
 
           
@@ -339,8 +342,6 @@ namespace Orange.Security.Protocol
 
         public void Dispose()
         {
-
-
             if (aesGcmDecrypt != null)
             {
                 aesGcmDecrypt.Dispose();

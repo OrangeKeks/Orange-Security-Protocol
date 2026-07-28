@@ -5,7 +5,7 @@ using System.Net.Sockets;
 namespace Orange.Security.Protocol
 {
     /// <summary>
-    /// Это сервер. Принимает подключения и данные, обеспечивая шифрование.
+    /// Это сервер. Принимает подключения и данные. Автоматическое шифрование.
     /// </summary>
     public class OSPServer : IDisposable
     {
@@ -363,7 +363,7 @@ namespace Orange.Security.Protocol
         /// <param name="remotePoint"></param>
         public delegate void NewClientConnectedEvent(IPEndPoint remotePoint);
         /// <summary>
-        /// Это событие происходит, когда новый клиент подключился к серверу, и они произвели успешный обмен ключами шифрования.
+        /// Это событие происходит, когда новый клиент подключился к серверу, завершив рукопожатие.
         /// </summary>
         public event NewClientConnectedEvent? OnNewClientConnected;
 
@@ -405,7 +405,7 @@ namespace Orange.Security.Protocol
         public delegate void ErrorOccuredEvent(IPEndPoint remotePoint, Exception ex);
 
         /// <summary>
-        /// Это событие происходит, когда с каким-либо клиентом происходит ошибка внутри протокола.
+        /// Это событие происходит, когда склиентом происходит ошибка внутри протокола.
         /// </summary>
         public event ErrorOccuredEvent? OnErrorOccured;
     }

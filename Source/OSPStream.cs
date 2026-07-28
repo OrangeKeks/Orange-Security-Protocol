@@ -139,7 +139,7 @@ namespace Orange.Security.Protocol
         private readonly ConcurrentQueue<uint> _rrQueue = new();
 
 
-        private object highLocker = new object(); // locker for HighPriorityPackets
+        
         public List<(byte command, NativeBytes? data)> HighPriorityPackets = new();
 
 
@@ -189,7 +189,7 @@ namespace Orange.Security.Protocol
 
 
                     (byte command, NativeBytes? data)? com = null;
-                    lock (highLocker) if (HighPriorityPackets.Count > 0) com = HighPriorityPackets.FirstOrDefault();
+                    lock (HighPriorityPackets) if (HighPriorityPackets.Count > 0) com = HighPriorityPackets.FirstOrDefault();
                     if (com != null)
                     {
 
@@ -201,7 +201,7 @@ namespace Orange.Security.Protocol
 
                         com.Value.data?.Dispose();
 
-                        lock (highLocker) HighPriorityPackets.Remove(com.Value);
+                        lock (HighPriorityPackets) HighPriorityPackets.Remove(com.Value);
                         OutgoingNum++;
                     }
 
@@ -699,14 +699,6 @@ namespace Orange.Security.Protocol
 
                 await SendViaSegments(clientKeyPkg.AsMemory());
 
-             
-
-
-                
-
-
-          
-
 
                 return true;
             }
@@ -852,7 +844,7 @@ namespace Orange.Security.Protocol
                 CryptographicOperations.ZeroMemory(ecdhSecret);
                 CryptographicOperations.ZeroMemory(mlKemSecret);
 
-                //await network.SendAsync(clientKeyPkg.AsMemory());
+                
                 await SendViaSegments(clientKeyPkg.AsMemory());
             
 
@@ -865,8 +857,6 @@ namespace Orange.Security.Protocol
                 await ReceiveExactlyAsync(rndNonce.AsMemory());
                 byte padding = rndNonce.AsSpan()[0];
 
-                
-            
                 
                 var mlKemKeyGen = new MLKemKeyPairGenerator();
                 mlKemKeyGen.Init(new MLKemKeyGenerationParameters(new SecureRandom(), MlKemParams));
@@ -888,7 +878,6 @@ namespace Orange.Security.Protocol
 
                 RandomNumberGenerator.Fill(resSpan.Slice(classicKeyLen + MlKemPubKeyLen));
 
-               // await network.SendAsync(result.AsMemory());
 
                 await SendViaSegments(result.AsMemory());
                 int clientPacketLen = classicKeyLen + MlKemCipherTextLen + padding;
@@ -936,7 +925,7 @@ namespace Orange.Security.Protocol
 
 
             byte[] finalKey = new byte[32]; // aes-gcm key
-            HKDF.DeriveKey(HashAlgorithmName.SHA256, combined, finalKey, salt ,OSPConsts.Info );
+            HKDF.DeriveKey(HashAlgorithmName.SHA256, combined, finalKey, salt, OSPConsts.Info);
             return finalKey;
         }
 
@@ -961,8 +950,8 @@ namespace Orange.Security.Protocol
         private uint RandomNumber(List<uint>? blocked = null)
         {
             uint rnd = (uint)Random.Shared.NextInt64(minValue, maxValue);
-            if (blocked != null) lock (blocked) if (blocked.Contains(rnd)) return RandomNumber();
-            if (Packets.ContainsKey(rnd)) return RandomNumber();
+            if (blocked != null) lock (blocked) if (blocked.Contains(rnd)) return RandomNumber(blocked);
+            if (Packets.ContainsKey(rnd)) return RandomNumber(blocked);
             else return rnd;
 
         }
@@ -1012,7 +1001,7 @@ namespace Orange.Security.Protocol
 
         public void SendHighPacketToQueue(byte command, NativeBytes? data)
         {
-            lock (highLocker) HighPriorityPackets.Add((command, data));
+            lock (HighPriorityPackets) HighPriorityPackets.Add((command, data));
 
             _signal.Release();
         }
