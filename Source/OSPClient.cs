@@ -80,7 +80,7 @@ namespace Orange.Security.Protocol
                         ushort maxPackets = BinaryPrimitives.ReadUInt16LittleEndian(headerSys.Data.Value.Span.Slice(8));
                         int recPing = 1000 / maxPackets + 50; // 50 - stable value
                      
-                        if (Settings.PingInvervalMilliseconds < recPing) pingTimer.Interval = recPing;
+                        if (Settings.PingInvervalMilliseconds < recPing && Settings.PingInvervalMilliseconds > 0) pingTimer.Interval = recPing;
                     }
                 }
             }
@@ -133,7 +133,7 @@ namespace Orange.Security.Protocol
                         ushort maxPackets = BinaryPrimitives.ReadUInt16LittleEndian(headerSys.Data.Value.Span.Slice(8));
                         int recPing = 1000 / maxPackets + 50; // 50 - stable value
 
-                        if (Settings.PingInvervalMilliseconds < recPing) pingTimer.Interval = recPing;
+                        if (Settings.PingInvervalMilliseconds < recPing && Settings.PingInvervalMilliseconds > 0) pingTimer.Interval = recPing;
                     }
                 }
             }
