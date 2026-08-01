@@ -93,8 +93,8 @@
             NativeBytes bytes = new NativeBytes(bytesToSend); 
 
             Stopwatch egressSpeed = Stopwatch.StartNew();
-            var response = await client.Send(bytes, header, isStreaming: true);
-    
+            var responseArgs = client.Send(bytes, header, isStreaming: true);
+            var response = await responseArgs.Response;
             egressSpeed.Stop();
 
             ingressWatch.Start();
