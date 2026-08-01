@@ -209,12 +209,29 @@ namespace Orange.Security.Protocol
         /// </summary>
         /// <param name="data">Данные для отправки.</param>
         /// <param name="ip">IP клиента, которому Вы хотите отправить данные.</param>
-        /// <param name="description">Универсальное значение для вас.</param>
-        public bool Send(NativeBytes data, IPEndPoint ip, byte[]? description)
+        /// <param name="description">Универсальное поле с данными в заголовке.</param>
+        public bool Send(NativeBytes data, IPEndPoint ip, byte[]? description, IProgress<double>? UploadProgressReport = null)
         {
             if (all_clients.TryGetValue(ip, out OSPListener? _client))
             {
-                _client.SendMessage(new OSPData(data), description);
+                _client.SendMessage(new OSPData(data), description, Progress: UploadProgressReport);
+
+                return true;
+            }
+            else return false;
+
+        }
+        /// <summary>
+        /// Отправьте данные клиенту без его запроса. (Данные можно отправлять только подключенным клиентам)
+        /// </summary>
+        /// <param name="data">Данные для отправки.</param>
+        /// <param name="ip">IP клиента, которому Вы хотите отправить данные.</param>
+        /// <param name="description">Универсальное поле с данными в заголовке.</param>
+        public bool Send(Memory<byte> data, IPEndPoint ip, byte[]? description, IProgress<double>? UploadProgressReport = null)
+        {
+            if (all_clients.TryGetValue(ip, out OSPListener? _client))
+            {
+                _client.SendMessage(new OSPData(data), description, Progress: UploadProgressReport);
 
                 return true;
             }
@@ -227,11 +244,11 @@ namespace Orange.Security.Protocol
         /// <param name="data">Данные для отправки.</param>
         /// <param name="ip">IP клиента, которому Вы хотите отправить данные.</param>
         /// <param name="description">Универсальное значение для вас.</param>
-        public bool Send(Memory<byte> data, IPEndPoint ip, byte[]? description)
+        public bool Send(byte[] data, IPEndPoint ip, byte[]? description, IProgress<double>? UploadProgressReport = null)
         {
             if (all_clients.TryGetValue(ip, out OSPListener? _client))
             {
-                _client.SendMessage(new OSPData(data), description);
+                _client.SendMessage(new OSPData(data), description, Progress: UploadProgressReport);
 
                 return true;
             }
@@ -244,28 +261,11 @@ namespace Orange.Security.Protocol
         /// <param name="data">Данные для отправки.</param>
         /// <param name="ip">IP клиента, которому Вы хотите отправить данные.</param>
         /// <param name="description">Универсальное значение для вас.</param>
-        public bool Send(byte[] data, IPEndPoint ip, byte[]? description)
+        public bool Send(Stream data, IPEndPoint ip, byte[]? description, IProgress<double>? UploadProgressReport = null)
         {
             if (all_clients.TryGetValue(ip, out OSPListener? _client))
             {
-                _client.SendMessage(new OSPData(data), description);
-
-                return true;
-            }
-            else return false;
-
-        }
-        /// <summary>
-        /// Отправьте данные клиенту без его запроса. (Данные можно отправлять только подключенным клиентам)
-        /// </summary>
-        /// <param name="data">Данные для отправки.</param>
-        /// <param name="ip">IP клиента, которому Вы хотите отправить данные.</param>
-        /// <param name="description">Универсальное значение для вас.</param>
-        public bool Send(Stream data, IPEndPoint ip, byte[]? description)
-        {
-            if (all_clients.TryGetValue(ip, out OSPListener? _client))
-            {
-                _client.SendMessage(new OSPData(data), description);
+                _client.SendMessage(new OSPData(data), description, Progress: UploadProgressReport);
 
                 return true;
             }
@@ -279,11 +279,11 @@ namespace Orange.Security.Protocol
         /// <param name="data">Данные для отправки.</param>
         /// <param name="ip">IP клиента, которому Вы хотите отправить данные.</param>
         /// <param name="description">Универсальное значение для вас.</param>
-        public bool Send(OSPData data, IPEndPoint ip, byte[]? description)
+        public bool Send(OSPData data, IPEndPoint ip, byte[]? description, IProgress<double>? UploadProgressReport = null)
         {
             if (all_clients.TryGetValue(ip, out OSPListener? _client))
             {
-                _client.SendMessage(data, description);
+                _client.SendMessage(data, description, Progress: UploadProgressReport);
 
                 return true;
             }

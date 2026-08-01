@@ -37,6 +37,8 @@ namespace Orange.Security.Protocol
         private IPEndPoint IPEndPoint = null!;
        
 
+       
+
         /// <summary>
         /// Запускаем клиент, присоединяясь к серверу.
         /// </summary>
@@ -54,6 +56,7 @@ namespace Orange.Security.Protocol
             await _socket.ConnectAsync(IPEndPoint);
             
             _scheduler = new OSPStream(_socket, Tools, Settings, true);
+            _scheduler.UploadReport = UploadProgress;
             _scheduler.OnError += (ex) => ErrorOccured(ex);
             bool isSuccess = await _scheduler.Handshake(true, Convert.FromBase64String(PublicMasterKey));
 
@@ -107,6 +110,7 @@ namespace Orange.Security.Protocol
             await _socket.ConnectAsync(IPEndPoint);
 
             _scheduler = new OSPStream(_socket, Tools, Settings, true);
+            _scheduler.UploadReport = UploadProgress;
             _scheduler.OnError += (ex) => ErrorOccured(ex);
             bool isSuccess = await _scheduler.Handshake(true);
 
@@ -429,16 +433,16 @@ namespace Orange.Security.Protocol
         /// <param name="description">Эта переменная универсальна, используете её на своё усмотрение. Она находится в заголовке запроса.</param>
         /// <param name="isStreaming">Включает/выключает стриминг данных. Если включено - ответ вернётся сразу при получении заголовка, но без данных. Сами данные будут идти в событие OnResponseProgressRead.</param>
         /// <returns>Дешифрованный ответ от сервера.</returns>
-        public async Task<OSPResponse> Send(NativeBytes data, byte[]? description, bool isStreaming = false)
+        public (uint RequestID, Task<OSPResponse> Response) Send(NativeBytes data, byte[]? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
         {
             var tcs = new TaskCompletionSource<OSPResponse>();
             if (_socket == null) throw new OSPException("Соединение отсутствует или было сброшено.");
             if (data == null || data.Length == 0) throw new OSPException("Данные отсутствуют или их количество равно нулю.");
-            uint id = _scheduler.SendToQueue(new OSPData(data), description, OSPStatusCode.None, OSPMessageType.RequestFromClient);
+            uint id = _scheduler.SendToQueue(new OSPData(data), description, OSPStatusCode.None, OSPMessageType.RequestFromClient, uploadProgress: UploadProgress);
 
             _allRequests[id] = (tcs, isStreaming);
 
-            return await tcs.Task;
+            return (id, tcs.Task);
 
         }
         /// <summary>
@@ -448,36 +452,16 @@ namespace Orange.Security.Protocol
         /// <param name="description">Эта переменная универсальна, используете её на своё усмотрение. Она находится в заголовке запроса.</param>
         /// <param name="isStreaming">Включает/выключает стриминг данных. Если включено - ответ вернётся сразу при получении заголовка, но без данных. Сами данные будут идти в событие OnResponseProgressRead.</param>
         /// <returns>Дешифрованный ответ от сервера.</returns>
-        public async Task<OSPResponse> Send(Stream data, byte[]? description, bool isStreaming = false)
+        public (uint RequestID, Task<OSPResponse> Response) Send(Stream data, byte[]? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
         {
             var tcs = new TaskCompletionSource<OSPResponse>();
             if (_socket == null) throw new OSPException("Соединение отсутствует или было сброшено.");
             if (data == null || data.Length == 0) throw new OSPException("Данные отсутствуют или их количество равно нулю.");
-            uint id = _scheduler.SendToQueue(new OSPData(data), description, OSPStatusCode.None, OSPMessageType.RequestFromClient);
+            uint id = _scheduler.SendToQueue(new OSPData(data), description, OSPStatusCode.None, OSPMessageType.RequestFromClient, uploadProgress: UploadProgress);
 
             _allRequests[id] = (tcs, isStreaming);
 
-            return await tcs.Task;
-
-        }
-
-        /// <summary>
-        /// Используйте эту функцию для отправки данных удалённому серверу.
-        /// </summary>
-        /// <param name="data">Данные (полезная нагрузка), которые вы хотите отправить</param>
-        /// <param name="description">Эта переменная универсальна, используете её на своё усмотрение. Она находится в заголовке запроса.</param>
-        /// <param name="isStreaming">Включает/выключает стриминг данных. Если включено - ответ вернётся сразу при получении заголовка, но без данных. Сами данные будут идти в событие OnResponseProgressRead.</param>
-        /// <returns>Дешифрованный ответ от сервера.</returns>
-        public async Task<OSPResponse> Send(byte[] data, byte[]? description, bool isStreaming = false)
-        {
-            var tcs = new TaskCompletionSource<OSPResponse>();
-            if (_socket == null) throw new OSPException("Соединение отсутствует или было сброшено.");
-            if (data == null || data.Length == 0) throw new OSPException("Данные отсутствуют или их количество равно нулю.");
-            uint id = _scheduler.SendToQueue(new OSPData(data), description, OSPStatusCode.None, OSPMessageType.RequestFromClient);
-
-            _allRequests[id] = (tcs, isStreaming);
-
-            return await tcs.Task;
+            return (id, tcs.Task);
 
         }
 
@@ -488,16 +472,36 @@ namespace Orange.Security.Protocol
         /// <param name="description">Эта переменная универсальна, используете её на своё усмотрение. Она находится в заголовке запроса.</param>
         /// <param name="isStreaming">Включает/выключает стриминг данных. Если включено - ответ вернётся сразу при получении заголовка, но без данных. Сами данные будут идти в событие OnResponseProgressRead.</param>
         /// <returns>Дешифрованный ответ от сервера.</returns>
-        public async Task<OSPResponse> Send(Memory<byte> data, byte[]? description, bool isStreaming = false)
+        public (uint RequestID, Task<OSPResponse> Response) Send(byte[] data, byte[]? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
+        {
+            var tcs = new TaskCompletionSource<OSPResponse>();
+            if (_socket == null) throw new OSPException("Соединение отсутствует или было сброшено.");
+            if (data == null || data.Length == 0) throw new OSPException("Данные отсутствуют или их количество равно нулю.");
+            uint id = _scheduler.SendToQueue(new OSPData(data), description, OSPStatusCode.None, OSPMessageType.RequestFromClient, uploadProgress: UploadProgress);
+
+            _allRequests[id] = (tcs, isStreaming);
+
+            return (id, tcs.Task);
+
+        }
+
+        /// <summary>
+        /// Используйте эту функцию для отправки данных удалённому серверу.
+        /// </summary>
+        /// <param name="data">Данные (полезная нагрузка), которые вы хотите отправить</param>
+        /// <param name="description">Эта переменная универсальна, используете её на своё усмотрение. Она находится в заголовке запроса.</param>
+        /// <param name="isStreaming">Включает/выключает стриминг данных. Если включено - ответ вернётся сразу при получении заголовка, но без данных. Сами данные будут идти в событие OnResponseProgressRead.</param>
+        /// <returns>Дешифрованный ответ от сервера.</returns>
+        public (uint RequestID, Task<OSPResponse> Response) Send(Memory<byte> data, byte[]? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
         {
             var tcs = new TaskCompletionSource<OSPResponse>();
             if (_socket == null) throw new OSPException("Соединение отсутствует или было сброшено.");
             if (data.Length == 0) throw new OSPException("Данные отсутствуют или их количество равно нулю.");
-            uint id = _scheduler.SendToQueue(new OSPData(data), description, OSPStatusCode.None, OSPMessageType.RequestFromClient);
+            uint id = _scheduler.SendToQueue(new OSPData(data), description, OSPStatusCode.None, OSPMessageType.RequestFromClient, uploadProgress: UploadProgress);
 
             _allRequests[id] = (tcs, isStreaming);
 
-            return await tcs.Task;
+            return (id, tcs.Task);
 
         }
         /// <summary>
@@ -507,16 +511,16 @@ namespace Orange.Security.Protocol
         /// <param name="description">Эта переменная универсальна, используете её на своё усмотрение. Она находится в заголовке запроса.</param>
         /// <param name="isStreaming">Включает/выключает стриминг данных. Если включено - ответ вернётся сразу при получении заголовка, но без данных. Сами данные будут идти в событие OnResponseProgressRead.</param>
         /// <returns>Дешифрованный ответ от сервера.</returns>
-        public async Task<OSPResponse> Send(OSPData data, byte[]? description, bool isStreaming = false)
+        public (uint RequestID, Task<OSPResponse> Response) Send(OSPData data, byte[]? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
         {
             var tcs = new TaskCompletionSource<OSPResponse>();
             if (_socket == null) throw new OSPException("Соединение отсутствует или было сброшено.");
             if (data == null || data.Length == 0) throw new OSPException("Данные отсутствуют или их количество равно нулю.");
-            uint id = _scheduler.SendToQueue(data, description, OSPStatusCode.None, OSPMessageType.RequestFromClient);
+            uint id = _scheduler.SendToQueue(data, description, OSPStatusCode.None, OSPMessageType.RequestFromClient, uploadProgress: UploadProgress);
 
             _allRequests[id] = (tcs, isStreaming);
 
-            return await tcs.Task;
+            return (id, tcs.Task);
 
         }
 
@@ -668,6 +672,15 @@ namespace Orange.Security.Protocol
 
 
 
+        public delegate void UploadProgressEvent(uint RequestID, double UploadProgress);
+
+        protected virtual void UploadProgress(uint RequestID, double UploadProgress)
+        {
+            UploadProgressEvent? msg = OnUploadProgress;
+            msg?.Invoke(RequestID, UploadProgress);
+        }
+
+        public event UploadProgressEvent? OnUploadProgress;
 
     }
 }

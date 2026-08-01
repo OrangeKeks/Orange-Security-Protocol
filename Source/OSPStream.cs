@@ -1,7 +1,9 @@
-﻿using Org.BouncyCastle.Crypto.Generators;
+﻿using Org.BouncyCastle.Bcpg;
+using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Kems;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Security;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -51,6 +53,8 @@ namespace Orange.Security.Protocol
         public OSPHeaderRequest Request { get; set; } = null!;
         public long CurrentChunkSize { get; set; }
         public bool RequestSend { get; set; }
+        public IProgress<double>? UploadProgressReport = null;
+           
     }
 
 
@@ -86,6 +90,8 @@ namespace Orange.Security.Protocol
             variables.IngressMbps = IngressBitrateMbps;
         }
 
+
+        public Action<uint, double>? UploadReport = null; 
 
         public event Action<Exception>? OnError;
         internal OSPStream(Socket ns, Tools _tools, OSPSettings _settings, bool isClient)
@@ -230,17 +236,20 @@ namespace Orange.Security.Protocol
                     }
                     else if (pocket.Priority == OSPPriority.Medium)
                     {
+                        
 
 
-
+                        
                         var current = pocket.Data!.AsMemory();
                         var header = GlobalTools.MakeHeaderRequestWithData(pocket.Request.Description, pocket.Request.MessageStatus, OutgoingNum, pocket.Request.MessageType, tools, current, false, targetKey);
 
                  
 
                         await SendData(header.AsMemory(), false, (int)current.Length);
-         
-                        
+
+                        pocket.UploadProgressReport?.Report(1);
+                        UploadReport?.Invoke(pocket.Request.UniID, 1);
+
                         header.Dispose();
 
                         pocket.Data.ClearSource();
@@ -282,44 +291,32 @@ namespace Orange.Security.Protocol
                         }
 
 
-                        var chunk = pocket.Data.AsMemory(pocket.CurrentChunkSize, toSend);
+
+                        Span<byte> dataStart = frameDataBuffer.AsWritableSpan().Slice(54 + 16, toSend);
+                        pocket.Data.AsMemory(pocket.CurrentChunkSize, toSend).Span.CopyTo(dataStart);
+                        
+                    
                         int max = (int)((pocket.Data.Length + variables.SliceSize - 1) / variables.SliceSize);
 
                         int currentFrame = (int)(pocket.CurrentChunkSize / variables.SliceSize) + 1;
 
-                        //using NativeBytes frameBuffer = new NativeBytes(chunk.Length + 54 + 16); 
+                        
                         GlobalTools.MakeHeaderFrame(OutgoingNum, TypeForFrame(pocket.Request.MessageType), tools, max, currentFrame, targetKey, frameDataBuffer);
 
-                        tools.Encrypt(chunk.Span, dataTag.Span);
+                        tools.Encrypt(dataStart, dataTag.Span);
 
-
-
-
-                      
                         
                         dataTag.Span.CopyTo(frameDataBuffer.AsWritableSpan().Slice(54));
 
-                        
-                        chunk.Span.CopyTo(frameDataBuffer.AsWritableSpan().Slice(54 + 16));
 
-
-                      
-
-                        await SendData(frameDataBuffer.AsMemory(0, chunk.Length + 54 + 16), false, chunk.Length);
-
-
-
-                    
-
-
+                        await SendData(frameDataBuffer.AsMemory(0, toSend + 54 + 16), false, toSend);
                         OutgoingNum++;
-
-
 
                         pocket.CurrentChunkSize += toSend;
 
-
-                        
+                        double prog = (double)pocket.CurrentChunkSize / pocket.Data.Length;
+                        pocket.UploadProgressReport?.Report(prog);
+                        UploadReport?.Invoke(pocket.Request.UniID, prog);
 
                         if (pocket.CurrentChunkSize >= pocket.Data.Length)
                         {
@@ -356,6 +353,20 @@ namespace Orange.Security.Protocol
 
         // Receiving
 
+        public async ValueTask<byte> ReadByte()
+        {
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(1);
+            try
+            {
+                await ReceiveExactlyAsync(buffer.AsMemory(0, 1));
+
+                return buffer[0];
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+        }
         public async ValueTask ReceiveExactlyAsync(Memory<byte> buffer)
         {
             int totalRead = 0;
@@ -630,12 +641,14 @@ namespace Orange.Security.Protocol
         {
             var classicKeyLen = GetCorrect(tools._ecndhe.KeySize).lengthKey;
 
-            if (isClient)
+            if (isClient) // Client
             {
-                byte padding = (byte)Random.Shared.Next(16, 256);
-                using NativeBytes rndNonce = new NativeBytes(1 + 16);
-                rndNonce.AsWritableSpan()[0] = padding;
-                RandomNumberGenerator.Fill(rndNonce.AsWritableSpan().Slice(1));
+                byte keyClient = (byte)Random.Shared.Next(128, 256); // 128-256 with key
+                byte padding = (byte)Random.Shared.Next(16, 256); 
+                using NativeBytes rndNonce = new NativeBytes(1 + 1 + 16);
+                rndNonce.AsWritableSpan()[0] = keyClient;
+                rndNonce.AsWritableSpan()[1] = padding;
+                RandomNumberGenerator.Fill(rndNonce.AsWritableSpan().Slice(2));
                 await SendViaSegments(rndNonce.AsMemory());
               
 
@@ -657,7 +670,7 @@ namespace Orange.Security.Protocol
                 using NativeBytes signData = new NativeBytes(classicKeyLen + MlKemPubKeyLen + 16);
                 serverEcdhSpan.CopyTo(signData.AsWritableSpan());
                 serverMlKemSpan.CopyTo(signData.AsWritableSpan().Slice(classicKeyLen));
-                rndNonce.AsSpan(1, 16).CopyTo(signData.AsWritableSpan().Slice(classicKeyLen + MlKemPubKeyLen));
+                rndNonce.AsSpan(2, 16).CopyTo(signData.AsWritableSpan().Slice(classicKeyLen + MlKemPubKeyLen));
 
                 int signOffset = classicKeyLen + MlKemPubKeyLen;
                 if (!ecdServer.VerifyData(signData.AsSpan(), result.AsSpan(signOffset, obj.signLength), obj.hash, DSASignatureFormat.IeeeP1363FixedFieldConcatenation))
@@ -681,7 +694,7 @@ namespace Orange.Security.Protocol
 
                 encapsulator.Encapsulate(mlKemCipherText, mlKemSecret);
 
-                tools.Key = DeriveHybridKey(ecdhSecret, mlKemSecret, rndNonce.AsSpan().Slice(1));
+                tools.Key = DeriveHybridKey(ecdhSecret, mlKemSecret, rndNonce.AsSpan().Slice(2));
 
 
                 int clientPacketLen = classicKeyLen + MlKemCipherTextLen + padding;
@@ -702,7 +715,7 @@ namespace Orange.Security.Protocol
 
                 return true;
             }
-            else
+            else // Server
             {
                 using ECDsa ecdsaSigner = ECDsa.Create();
                 ecdsaSigner.ImportPkcs8PrivateKey(keyB, out _);
@@ -791,12 +804,13 @@ namespace Orange.Security.Protocol
 
             if (isClient)
             {
-
-                byte padding = (byte)Random.Shared.Next(16, 256);
-                using NativeBytes rndNonce = new NativeBytes(1 + 16);
-                rndNonce.AsWritableSpan()[0] = padding;
+                byte keyClient = (byte)Random.Shared.Next(1, 128); // 1-128 without key
+                byte padding = (byte)Random.Shared.Next(16, 256); 
+                using NativeBytes rndNonce = new NativeBytes(1 + 1 + 16);
+                rndNonce.AsWritableSpan()[0] = keyClient;
+                rndNonce.AsWritableSpan()[1] = padding;
                 
-                RandomNumberGenerator.Fill(rndNonce.AsWritableSpan().Slice(1));
+                RandomNumberGenerator.Fill(rndNonce.AsWritableSpan().Slice(2));
                 
                 //await network.SendAsync(rndNonce.AsMemory());
 
@@ -829,7 +843,7 @@ namespace Orange.Security.Protocol
                 encapsulator.Encapsulate(mlKemCipherText, mlKemSecret);
 
 
-                tools.Key = DeriveHybridKey(ecdhSecret, mlKemSecret, rndNonce.AsSpan().Slice(1));
+                tools.Key = DeriveHybridKey(ecdhSecret, mlKemSecret, rndNonce.AsSpan().Slice(2));
 
 
                 int clientPacketLen = classicKeyLen + MlKemCipherTextLen + padding;
@@ -974,14 +988,14 @@ namespace Orange.Security.Protocol
 
 
        
-        public uint SendToQueue(OSPData? data, byte[]? description, OSPStatusCode status, OSPMessageType type, List<uint>? blocked = null)
+        public uint SendToQueue(OSPData? data, byte[]? description, OSPStatusCode status, OSPMessageType type, List<uint>? blocked = null, IProgress<double>? uploadProgress = null)
         {
             //if (data == null) data = new OSPData(new byte[] { 0x6E });
             if (description == null) description = OSPConsts.NullableData;
 
 
             uint id = RandomNumber(blocked);
-            Packets[id] = new OSPPacketContext() { Priority = GetPriority(data is null ? 0 : data.Length, variables.FrameSizeThreshold), Data = data, Request = new OSPHeaderRequest() { MessageStatus = status, MessageType = type, Description = description }, CurrentChunkSize = 0, RequestSend = false };
+            Packets[id] = new OSPPacketContext() { Priority = GetPriority(data is null ? 0 : data.Length, variables.FrameSizeThreshold), Data = data, Request = new OSPHeaderRequest() { MessageStatus = status, MessageType = type, Description = description }, UploadProgressReport = uploadProgress, CurrentChunkSize = 0, RequestSend = false };
             _rrQueue.Enqueue(id);
             _signal.Release();
             return id;
@@ -1117,11 +1131,8 @@ namespace Orange.Security.Protocol
             {
                 
                 try
-                {
-                    
+                {                   
                     _cts.Cancel();
-                   
-                  
                 }
                 catch { }
                 finally
@@ -1156,10 +1167,6 @@ namespace Orange.Security.Protocol
 
                 }
             }
-
-
-
-
 
         }
         ~OSPStream() => Dispose(false);

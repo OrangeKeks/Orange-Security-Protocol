@@ -335,7 +335,7 @@ namespace Orange.Security.Protocol
         public OSPSegment HandshakeSegmentSize { get; set; } = new OSPSegment(50, 200);
 
         /// <summary>
-        /// Диапазон значений для задержки между отправками сегментов.
+        /// Диапазон значений интервала для задержки между отправками сегментов во время рукопожатия.
         /// </summary>
         public OSPSegment HandshakeSegmentInterval { get; set; } = new OSPSegment(5, 50);
 
@@ -376,7 +376,7 @@ namespace Orange.Security.Protocol
         public double DefaultEgressBitrateMbps { get; set; } = 0;
 
         /// <summary>
-        /// Таймер, после которого получение отменённого пакета будет недопустимым.
+        /// Таймер, после которого получение отменённого пакета будет недопустимым. Значение в миллисекундах.
         /// </summary>
         public ushort CancellationPacketTimeout { get; set; } = 10000; // 10 seconds
     }
@@ -430,6 +430,11 @@ namespace Orange.Security.Protocol
         /// </summary>
         public byte MaxPingPacketsPerSecond { get; set; } = 5;
 
+        /// <summary>
+        /// Разрешает/запрещает клиентам без публичного ключа для подписи подключаться. Такие клиенты уязвимы к MitM атакам.
+        /// </summary>
+        public bool AllowInsecureClients { get; set; } = false;
+
     }
 
 
@@ -447,10 +452,10 @@ namespace Orange.Security.Protocol
         /// <summary>
         /// Статус-код.
         /// </summary>
-        public OSPStatusCode Code { get; set; } = OSPStatusCode.OK;
+        public OSPStatusCode Code { get; set; } = OSPStatusCode.Error;
 
         /// <summary>
-        /// Заголовок.
+        /// Данные внутри заголовка.
         /// </summary>
         public byte[]? HeaderDescription { get; set; } = default;
 

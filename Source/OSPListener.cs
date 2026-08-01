@@ -75,8 +75,11 @@ namespace Orange.Security.Protocol
                 else _ip = IPEndPoint.Parse("0.0.0.0:1");
 
                 bool success = false;
-                if (_server.masterKey == null) success = await _scheduler.Handshake(false);
-                else success = await _scheduler.Handshake(false, _server.masterKey);
+                byte clientType;
+
+                clientType = await _scheduler.ReadByte();
+                if (_server.masterKey == null || (clientType < 128 && _server.Settings.AllowInsecureClients)) success = await _scheduler.Handshake(false);
+                else if (clientType >= 128 && _server.masterKey != null) success = await _scheduler.Handshake(false, _server.masterKey);
 
                 if (success) _server.NewClientConnected(_ip);
                 else throw new OSPException("Неудача в установки безопасного соединения с клиентом.");
@@ -306,7 +309,7 @@ namespace Orange.Security.Protocol
 
 
 
-        public void SendMessage(OSPData data, byte[]? description) => _scheduler.SendToQueue(data, description, OSPStatusCode.None, OSPMessageType.RequestFromServer);
+        public void SendMessage(OSPData data, byte[]? description, IProgress<double>? Progress = null) => _scheduler.SendToQueue(data, description, OSPStatusCode.None, OSPMessageType.RequestFromServer, uploadProgress: Progress);
 
         public void UpdateBitrate(int Egress, int Ingress) => _scheduler.UpdateBitrateMbps(Egress, Ingress);
 

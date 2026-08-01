@@ -153,9 +153,13 @@ namespace Orange.Security.Protocol
 
                 Span<byte> dataTag = stackalloc byte[16];
 
-                _tools.Encrypt(data.Value.Span, dataTag);
+                Span<byte> spanData = span.Slice(dataPos + 16);
 
-                data.Value.Span.CopyTo(span.Slice(dataPos + 16));
+                data.Value.Span.CopyTo(spanData);
+
+                _tools.Encrypt(spanData, dataTag);
+
+                
                 dataTag.CopyTo(span.Slice(dataPos));
 
             }
