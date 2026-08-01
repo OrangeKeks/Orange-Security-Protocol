@@ -121,7 +121,7 @@
 
 - Внезапная отправка данных клиенту:
 
-    `await server.Send(FromText("Hello too!"), ConnectedIP, AnyHeaderBytes);`
+    `server.Send(FromText("Hello too!"), ConnectedIP, AnyHeaderBytes);`
 
 - Отслеживание прогресса ответа сервера на клиенте:
 
