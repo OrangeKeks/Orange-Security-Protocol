@@ -988,26 +988,43 @@ namespace Orange.Security.Protocol
 
 
        
-        public uint SendToQueue(OSPData? data, byte[]? description, OSPStatusCode status, OSPMessageType type, List<uint>? blocked = null, IProgress<double>? uploadProgress = null)
+        public uint SendToQueue(OSPData? data, ReadOnlyMemory<byte>? description, OSPStatusCode status, OSPMessageType type, List<uint>? blocked = null, IProgress<double>? uploadProgress = null)
         {
-            //if (data == null) data = new OSPData(new byte[] { 0x6E });
-            if (description == null) description = OSPConsts.NullableData;
+            
+        
 
 
             uint id = RandomNumber(blocked);
-            Packets[id] = new OSPPacketContext() { Priority = GetPriority(data is null ? 0 : data.Length, variables.FrameSizeThreshold), Data = data, Request = new OSPHeaderRequest() { MessageStatus = status, MessageType = type, Description = description }, UploadProgressReport = uploadProgress, CurrentChunkSize = 0, RequestSend = false };
+            var _request = new OSPHeaderRequest() { MessageStatus = status, MessageType = type };
+
+            if (description != null)
+            {
+                NativeBytes _desc = new NativeBytes(description.Value.Length);
+                description.Value.CopyTo(_desc.AsMemory());
+                _request.DescriptionBuffer = _desc;
+            }
+            else _request.DescriptionBuffer = null;
+            Packets[id] = new OSPPacketContext() { Priority = GetPriority(data is null ? 0 : data.Length, variables.FrameSizeThreshold), Data = data, Request = _request, UploadProgressReport = uploadProgress, CurrentChunkSize = 0, RequestSend = false };
             _rrQueue.Enqueue(id);
             _signal.Release();
             return id;
         }
-        public void SendToQueue(OSPData? data, byte[]? description, OSPStatusCode status, OSPMessageType type, uint id)
+        public void SendToQueue(OSPData? data, ReadOnlyMemory<byte>? description, OSPStatusCode status, OSPMessageType type, uint id)
         {
-            //if (data == null) data = new OSPData(new byte[] { 0x6E });
-            if (description == null) description = OSPConsts.NullableData;
+
+      
 
 
-           
-            Packets[id] = new OSPPacketContext() { Priority = GetPriority(data is null ? 0 : data.Length, variables.FrameSizeThreshold), Data = data, Request = new OSPHeaderRequest() { MessageStatus = status, MessageType = type, Description = description }, CurrentChunkSize = 0, RequestSend = false };
+            var _request = new OSPHeaderRequest() { MessageStatus = status, MessageType = type };
+
+            if (description != null)
+            {
+                NativeBytes _desc = new NativeBytes(description.Value.Length);
+                description.Value.CopyTo(_desc.AsMemory());
+                _request.DescriptionBuffer = _desc;
+            }
+            else _request.DescriptionBuffer = null;
+            Packets[id] = new OSPPacketContext() { Priority = GetPriority(data is null ? 0 : data.Length, variables.FrameSizeThreshold), Data = data, Request = _request, CurrentChunkSize = 0, RequestSend = false };
             _rrQueue.Enqueue(id);
             _signal.Release();
         }
@@ -1101,7 +1118,7 @@ namespace Orange.Security.Protocol
         
         private List<uint> ToCancel = new();
         
-        public async void CancelPacket(uint id)
+        public void CancelPacket(uint id)
         {
 
             lock (ToCancel)

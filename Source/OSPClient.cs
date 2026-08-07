@@ -23,21 +23,21 @@ namespace Orange.Security.Protocol
         public uint Ping { get; private set; } = 0;
 
         public OSPClientSettings Settings = new OSPClientSettings();
-        
+
         private Tools Tools = new Tools(true);
 
         private OSPStream _scheduler = null!;
         private Socket _socket;
 
-        
+
 
         private ConcurrentDictionary<uint, byte> CancelledPackets = new ConcurrentDictionary<uint, byte>();
 
 
         private IPEndPoint IPEndPoint = null!;
-       
 
-       
+
+
 
         /// <summary>
         /// Запускаем клиент, присоединяясь к серверу.
@@ -54,7 +54,7 @@ namespace Orange.Security.Protocol
 
 
             await _socket.ConnectAsync(IPEndPoint);
-            
+
             _scheduler = new OSPStream(_socket, Tools, Settings, true);
             _scheduler.UploadReport = UploadProgress;
             _scheduler.OnError += (ex) => ErrorOccured(ex);
@@ -82,14 +82,14 @@ namespace Orange.Security.Protocol
                         _scheduler.variables.FrameSizeThreshold = BinaryPrimitives.ReadInt32LittleEndian(headerSys.Data.Value.Span.Slice(4));
                         ushort maxPackets = BinaryPrimitives.ReadUInt16LittleEndian(headerSys.Data.Value.Span.Slice(8));
                         int recPing = 1000 / maxPackets + 50; // 50 - stable value
-                     
+
                         if (Settings.PingInvervalMilliseconds < recPing && Settings.PingInvervalMilliseconds > 0) pingTimer.Interval = recPing;
                     }
                 }
             }
 
             _background = Task.Run(() => ReadData(source.Token));
-           
+
             IsConnected = true;
         }
 
@@ -149,9 +149,9 @@ namespace Orange.Security.Protocol
 
         private void PingTimer_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
         {
-            
+
             _scheduler.SendHighPacketToQueue(OSPConsts.PingCommand, null);
-         
+
             pingWatch.Restart();
         }
 
@@ -164,7 +164,7 @@ namespace Orange.Security.Protocol
         private async Task ReadData(CancellationToken token)
         {
             byte[] tag = new byte[16];
-            
+
             SemaphoreSlim _networkLock = new SemaphoreSlim(1, 1);
             while (!token.IsCancellationRequested)
             {
@@ -176,10 +176,10 @@ namespace Orange.Security.Protocol
                     await _networkLock.WaitAsync();
 
                     OSPBaseHeader base_header = await _scheduler.ReadHeader(IPEndPoint);
-                    
-                    
+
+
                     lock (TimersList) TimersList.RemoveAll(x => !x.Enabled);
-                    
+
                     foreach (var cancelled in CancelledPackets)
                     {
                         CancelledPackets[cancelled.Key] = (byte)(cancelled.Value + 1);
@@ -187,14 +187,14 @@ namespace Orange.Security.Protocol
                         {
                             CancelledPackets.Remove(cancelled.Key, out _);
                         }
-                        
+
                     }
 
 
                     if (base_header is OSPHeader header)
                     {
-                        
-                        
+
+
                         if (header.MessageType == OSPMessageType.FrameFromClient || header.MessageType == OSPMessageType.RequestFromClient) throw new OSPException("Неверный тип пакета.");
                         if (CancelledPackets.ContainsKey(header.UniID)) throw new OSPException("Отменённый пакет продолжает приходить.");
 
@@ -202,15 +202,15 @@ namespace Orange.Security.Protocol
                         bool contains = true;
 
 
-                        if (_allRequests.ContainsKey(header.UniID)) response = _allRequests[header.UniID]; 
+                        if (_allRequests.ContainsKey(header.UniID)) response = _allRequests[header.UniID];
                         else contains = false;
-                        
-                        
+
+
                         if (header is OSPHeaderRequest request)
                         {
                             if (header.IsFramed)
                             {
-                                
+
                                 if (frameBuffer == null) frameBuffer = new NativeBytes(_scheduler.variables.SliceSize);
                                 if (response != null && response!.Value.isStreaming)
                                 {
@@ -223,7 +223,7 @@ namespace Orange.Security.Protocol
 
                                 continue;
                             }
-                            
+
 
                         }
 
@@ -236,7 +236,7 @@ namespace Orange.Security.Protocol
                             {
 
                                 if (response != null) { _ = Task.Run(() => response.Value.answer.SetResult(new OSPResponse() { Data = null, Header = _request, StatusCode = _request.MessageStatus, OnlyStatusCode = true })); _allRequests.TryRemove(header.UniID, out _); }
-                                
+
                                 continue;
                             }
 
@@ -249,37 +249,47 @@ namespace Orange.Security.Protocol
                             sw.Stop();
 
                             await _scheduler.IngressThrottling(sw.Elapsed.TotalMilliseconds, (int)obj.Length);
-                            
-                            
+
+
 
                             Tools.Decrypt(obj.AsWritableSpan(), tag);
 
-                            if (response != null) { _ = Task.Run(() => response.Value.answer.SetResult(new OSPResponse() { Data = obj, Header = _request, StatusCode = _request.MessageStatus, OnlyStatusCode = false })); }
-                            else
+                            try
                             {
-                                OSPMessageEventArgs args = new OSPMessageEventArgs()
+                                if (response != null) { _ = Task.Run(() => response.Value.answer.SetResult(new OSPResponse() { Data = obj, Header = _request, StatusCode = _request.MessageStatus, OnlyStatusCode = false })); }
+                                else
                                 {
-                                    Data = obj,
-                                    Header = _request,
+                                    OSPMessageEventArgs args = new OSPMessageEventArgs()
+                                    {
+                                        Data = obj,
+                                        Header = _request,
 
-                                };
-                                if (OnMessageFullyRead != null) await OnMessageFullyRead(args);
+                                    };
+                                    if (OnMessageFullyRead != null) await MessageFullyRead(args);
+                                }
                             }
+                            catch (Exception ex)
+                            {
+                                ErrorOccured(ex);
+                            }
+
+
+
 
 
                         }
                         else if (header is OSPHeaderFrame _frame)
                         {
-                           
+
                             await _scheduler.ReceiveExactlyAsync(tag);
                             var current = frames[_frame.UniID];
 
 
                             var sw = Stopwatch.StartNew();
 
-                           
 
-                            int bytesRead =  await _scheduler.ReadFrame((long)current.request.DataLength, _frame.CurrentFrame, frameBuffer);
+
+                            int bytesRead = await _scheduler.ReadFrame((long)current.request.DataLength, _frame.CurrentFrame, frameBuffer);
 
                             await _scheduler.IngressThrottling(sw.Elapsed.TotalMilliseconds, bytesRead);
 
@@ -301,7 +311,7 @@ namespace Orange.Security.Protocol
                                         if (current.countBytes == current.request.DataLength) progress = 1;
                                         else progress = (double)current.countBytes / current.request.DataLength;
                                         _ = Task.Run(async () => await OnResponseProgressRead(progress, _frame.UniID, frameBuffer.AsMemory(0, bytesRead)));
-                                    } 
+                                    }
                                     if (_frame.CurrentFrame == 1) { _ = Task.Run(() => response!.Value.answer.SetResult(new OSPResponse() { Data = null, Header = current.request, StatusCode = current.request.MessageStatus, OnlyStatusCode = true })); }
                                 }
                                 else
@@ -318,8 +328,7 @@ namespace Orange.Security.Protocol
                             if (_frame.CurrentFrame == _frame.MaxFrame)
                             {
 
-                                
-                                
+
                                 if (contains)
                                 {
                                     if (!response!.Value.isStreaming)
@@ -332,11 +341,15 @@ namespace Orange.Security.Protocol
                                 else
                                 {
 
-                                    if (OnMessageFullyRead != null) await OnMessageFullyRead(new OSPMessageEventArgs() { Header = current.request, Data = current.data });
-                                    current.data.Dispose();
+                                    if (OnMessageFullyRead != null) await MessageFullyRead(new OSPMessageEventArgs() { Header = current.request, Data = current.data });
+
                                 }
 
                                 frames.Remove(_frame.UniID);
+
+
+
+
 
                             }
 
@@ -350,26 +363,26 @@ namespace Orange.Security.Protocol
                             if (pingWatch.ElapsedMilliseconds < int.MaxValue)
                             {
                                 Ping = (uint)pingWatch.ElapsedMilliseconds;
-                                
+
                             }
-                           
-                        }     
+
+                        }
                         else if (systemHeader.Command == OSPConsts.HandshakeSettings)
                         {
-                     
+
                             if (systemHeader.Data != null)
                             {
 
                                 _scheduler.variables.SliceSize = BinaryPrimitives.ReadInt32LittleEndian(systemHeader.Data.Value.Span.Slice(0, 4));
                                 _scheduler.variables.FrameSizeThreshold = BinaryPrimitives.ReadInt32LittleEndian(systemHeader.Data.Value.Span.Slice(4, 4));
                                 ushort maxPackets = BinaryPrimitives.ReadUInt16LittleEndian(systemHeader.Data.Value.Span.Slice(8));
-                                int recPing =  1000 / maxPackets + 50; // 50 - stable value
+                                int recPing = 1000 / maxPackets + 50; // 50 - stable value
                                 if (Settings.PingInvervalMilliseconds < recPing) pingTimer.Interval = recPing;
                             }
                         }
                         else if (systemHeader.Command == OSPConsts.CancelPacketCommand)
                         {
-                         
+
                             if (systemHeader.Data != null)
                             {
                                 var d = BinaryPrimitives.ReadUInt32LittleEndian(systemHeader.Data.Value.Span);
@@ -380,7 +393,7 @@ namespace Orange.Security.Protocol
                             }
 
                         }
-                       
+
 
                     }
 
@@ -403,6 +416,25 @@ namespace Orange.Security.Protocol
         }
 
 
+        internal async ValueTask MessageFullyRead(OSPMessageEventArgs args)
+        {
+            try
+            {
+                if (OnMessageFullyRead != null) await OnMessageFullyRead(args);
+            }
+            catch (Exception ex)
+            {
+                ErrorOccured(ex);
+            }
+            finally
+            {
+                args.Data?.Dispose();
+                args.Header.DescriptionBuffer?.Dispose();
+                args.Header.DescriptionBuffer = null;
+            }
+
+        }
+
 
         private CancellationTokenSource source = new CancellationTokenSource();
         private Task _background = null!;
@@ -415,7 +447,7 @@ namespace Orange.Security.Protocol
         {
             _socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             IPEndPoint = new IPEndPoint(ip, port);
-            
+
         }
         public OSPClient(IPEndPoint ip)
         {
@@ -432,8 +464,9 @@ namespace Orange.Security.Protocol
         /// <param name="data">Данные (полезная нагрузка), которые вы хотите отправить</param>
         /// <param name="description">Эта переменная универсальна, используете её на своё усмотрение. Она находится в заголовке запроса.</param>
         /// <param name="isStreaming">Включает/выключает стриминг данных. Если включено - ответ вернётся сразу при получении заголовка, но без данных. Сами данные будут идти в событие OnResponseProgressRead.</param>
+        /// <param name="UploadProgress">Отслеживайте прогресс отправки данных.</param>
         /// <returns>Дешифрованный ответ от сервера.</returns>
-        public (uint RequestID, Task<OSPResponse> Response) Send(NativeBytes data, byte[]? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
+        public (uint RequestID, Task<OSPResponse> Response) Send(NativeBytes data, ReadOnlyMemory<byte>? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
         {
             var tcs = new TaskCompletionSource<OSPResponse>();
             if (_socket == null) throw new OSPException("Соединение отсутствует или было сброшено.");
@@ -451,28 +484,9 @@ namespace Orange.Security.Protocol
         /// <param name="data">Данные (полезная нагрузка), которые вы хотите отправить</param>
         /// <param name="description">Эта переменная универсальна, используете её на своё усмотрение. Она находится в заголовке запроса.</param>
         /// <param name="isStreaming">Включает/выключает стриминг данных. Если включено - ответ вернётся сразу при получении заголовка, но без данных. Сами данные будут идти в событие OnResponseProgressRead.</param>
+        /// <param name="UploadProgress">Отслеживайте прогресс отправки данных.</param>
         /// <returns>Дешифрованный ответ от сервера.</returns>
-        public (uint RequestID, Task<OSPResponse> Response) Send(Stream data, byte[]? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
-        {
-            var tcs = new TaskCompletionSource<OSPResponse>();
-            if (_socket == null) throw new OSPException("Соединение отсутствует или было сброшено.");
-            if (data == null || data.Length == 0) throw new OSPException("Данные отсутствуют или их количество равно нулю.");
-            uint id = _scheduler.SendToQueue(new OSPData(data), description, OSPStatusCode.None, OSPMessageType.RequestFromClient, uploadProgress: UploadProgress);
-
-            _allRequests[id] = (tcs, isStreaming);
-
-            return (id, tcs.Task);
-
-        }
-
-        /// <summary>
-        /// Используйте эту функцию для отправки данных удалённому серверу.
-        /// </summary>
-        /// <param name="data">Данные (полезная нагрузка), которые вы хотите отправить</param>
-        /// <param name="description">Эта переменная универсальна, используете её на своё усмотрение. Она находится в заголовке запроса.</param>
-        /// <param name="isStreaming">Включает/выключает стриминг данных. Если включено - ответ вернётся сразу при получении заголовка, но без данных. Сами данные будут идти в событие OnResponseProgressRead.</param>
-        /// <returns>Дешифрованный ответ от сервера.</returns>
-        public (uint RequestID, Task<OSPResponse> Response) Send(byte[] data, byte[]? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
+        public (uint RequestID, Task<OSPResponse> Response) Send(Stream data, ReadOnlyMemory<byte>? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
         {
             var tcs = new TaskCompletionSource<OSPResponse>();
             if (_socket == null) throw new OSPException("Соединение отсутствует или было сброшено.");
@@ -491,8 +505,30 @@ namespace Orange.Security.Protocol
         /// <param name="data">Данные (полезная нагрузка), которые вы хотите отправить</param>
         /// <param name="description">Эта переменная универсальна, используете её на своё усмотрение. Она находится в заголовке запроса.</param>
         /// <param name="isStreaming">Включает/выключает стриминг данных. Если включено - ответ вернётся сразу при получении заголовка, но без данных. Сами данные будут идти в событие OnResponseProgressRead.</param>
+        /// <param name="UploadProgress">Отслеживайте прогресс отправки данных.</param>
         /// <returns>Дешифрованный ответ от сервера.</returns>
-        public (uint RequestID, Task<OSPResponse> Response) Send(Memory<byte> data, byte[]? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
+        public (uint RequestID, Task<OSPResponse> Response) Send(byte[] data, ReadOnlyMemory<byte>? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
+        {
+            var tcs = new TaskCompletionSource<OSPResponse>();
+            if (_socket == null) throw new OSPException("Соединение отсутствует или было сброшено.");
+            if (data == null || data.Length == 0) throw new OSPException("Данные отсутствуют или их количество равно нулю.");
+            uint id = _scheduler.SendToQueue(new OSPData(data), description, OSPStatusCode.None, OSPMessageType.RequestFromClient, uploadProgress: UploadProgress);
+
+            _allRequests[id] = (tcs, isStreaming);
+
+            return (id, tcs.Task);
+
+        }
+
+        /// <summary>
+        /// Используйте эту функцию для отправки данных удалённому серверу.
+        /// </summary>
+        /// <param name="data">Данные (полезная нагрузка), которые вы хотите отправить</param>
+        /// <param name="description">Эта переменная универсальна, используете её на своё усмотрение. Она находится в заголовке запроса.</param>
+        /// <param name="isStreaming">Включает/выключает стриминг данных. Если включено - ответ вернётся сразу при получении заголовка, но без данных. Сами данные будут идти в событие OnResponseProgressRead.</param>
+        /// <param name="UploadProgress">Отслеживайте прогресс отправки данных.</param>
+        /// <returns>Дешифрованный ответ от сервера.</returns>
+        public (uint RequestID, Task<OSPResponse> Response) Send(Memory<byte> data, ReadOnlyMemory<byte>? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
         {
             var tcs = new TaskCompletionSource<OSPResponse>();
             if (_socket == null) throw new OSPException("Соединение отсутствует или было сброшено.");
@@ -510,8 +546,9 @@ namespace Orange.Security.Protocol
         /// <param name="data">Данные (полезная нагрузка), которые вы хотите отправить</param>
         /// <param name="description">Эта переменная универсальна, используете её на своё усмотрение. Она находится в заголовке запроса.</param>
         /// <param name="isStreaming">Включает/выключает стриминг данных. Если включено - ответ вернётся сразу при получении заголовка, но без данных. Сами данные будут идти в событие OnResponseProgressRead.</param>
+        /// <param name="UploadProgress">Отслеживайте прогресс отправки данных.</param>
         /// <returns>Дешифрованный ответ от сервера.</returns>
-        public (uint RequestID, Task<OSPResponse> Response) Send(OSPData data, byte[]? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
+        public (uint RequestID, Task<OSPResponse> Response) Send(OSPData data, ReadOnlyMemory<byte>? description, bool isStreaming = false, IProgress<double>? UploadProgress = null)
         {
             var tcs = new TaskCompletionSource<OSPResponse>();
             if (_socket == null) throw new OSPException("Соединение отсутствует или было сброшено.");
@@ -527,7 +564,7 @@ namespace Orange.Security.Protocol
 
 
         List<System.Timers.Timer> TimersList = new();
-       
+
         public void CancelPacket(uint messageID)
         {
             NativeBytes NId = new NativeBytes(4);
@@ -536,13 +573,13 @@ namespace Orange.Security.Protocol
             var _timer = GlobalTools.StartTimer(Settings.CancellationPacketTimeout, () =>
             {
                 CancelledPackets[messageID] = 0;
-                
+
             });
             lock (TimersList) TimersList.Add(_timer);
 
 
         }
-        
+
         public void UpdateBitrateMbps(int EgressMbps, int IngressMbps)
         {
             _scheduler.UpdateBitrateMbps(EgressMbps, IngressMbps);
@@ -569,10 +606,10 @@ namespace Orange.Security.Protocol
             {
                 try
                 {
-                    
-                    source.Cancel();
-                    _background.Wait(TimeSpan.FromSeconds(3));
 
+                    source.Cancel();
+                    _socket.Dispose();
+                    _background?.Wait(millisecondsTimeout: 500);
                 }
                 catch { }
                 finally
@@ -580,18 +617,20 @@ namespace Orange.Security.Protocol
                     foreach (var item in frames)
                     {
                         if (item.Value.data != null) item.Value.data.Dispose();
+                        item.Value.request.DescriptionBuffer?.Dispose();
+                        item.Value.request.DescriptionBuffer = null;
                     }
                     frames.Clear();
                     if (frameBuffer != null) frameBuffer.Dispose();
 
                     source.Dispose();
-                    _socket.Close();
+
                     if (_socket != null) _socket.Close();
                     _scheduler.Dispose();
                     _allRequests.Clear();
                 }
 
-                
+
 
 
 

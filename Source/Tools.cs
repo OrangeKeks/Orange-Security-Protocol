@@ -31,7 +31,6 @@ namespace Orange.Security.Protocol
             bool isFramed = data[pos++] != 0;
 
 
-
             OSPHeaderRequest requestHeader = new OSPHeaderRequest()
             {
                 NumericID = numeric,
@@ -41,10 +40,15 @@ namespace Orange.Security.Protocol
                 MessageStatus = code,
                 IPEndPoint = ip,
                 IsFramed = isFramed,
-                Description = dataM.Span.Slice(pos).ToArray()
-
             };
-            
+            if (pos < data.Length)
+            {
+                Span<byte> _desc = data.Slice(pos);
+                NativeBytes _descBytes = new NativeBytes(_desc.Length);
+                _desc.CopyTo(_descBytes.AsWritableSpan());
+                requestHeader.DescriptionBuffer = _descBytes;
+            }
+            else requestHeader.DescriptionBuffer = null;
 
 
             return requestHeader;
@@ -142,7 +146,7 @@ namespace Orange.Security.Protocol
             span[pos++] = (byte)code;
             span[pos++] = (byte)(isFramed ? 1 : 0);
             if (description != null) { description.Value.Span.CopyTo(span.Slice(pos)); pos += description.Value.Length; }
-            
+
             Span<byte> tag = stackalloc byte[16];
             _tools.Encrypt(span.Slice(16 + 5 + 16, headerSize), tag);
             tag.CopyTo(span.Slice(16 + 5));
@@ -159,7 +163,7 @@ namespace Orange.Security.Protocol
 
                 _tools.Encrypt(spanData, dataTag);
 
-                
+
                 dataTag.CopyTo(span.Slice(dataPos));
 
             }
@@ -178,7 +182,7 @@ namespace Orange.Security.Protocol
             int currentSize = 16 + 5 + (16 + headerSize);
 
 
-            
+
 
             Span<byte> span = buffer.AsWritableSpan(0, currentSize);
 
@@ -209,7 +213,7 @@ namespace Orange.Security.Protocol
 
             tag.CopyTo(span.Slice(16 + 5));
 
-          
+
 
         }
 
@@ -263,22 +267,21 @@ namespace Orange.Security.Protocol
     internal class Tools : IDisposable
     {
 
-       
+
         public byte[] Key = null!;
         public ECDiffieHellman _ecndhe = null!;
 
         private ulong _sendNonce;
         private ulong _recvNonce;
 
-        private SpinLock _sendLock = new(false);
-        private SpinLock _recvLock = new(false);
+      
 
         private AesGcm aesGcmEncrypt = null!;
         private AesGcm aesGcmDecrypt = null!;
         public Tools(bool isClient)
         {
 
-           
+
 
             if (isClient)
             {
@@ -297,25 +300,18 @@ namespace Orange.Security.Protocol
         {
             if (aesGcmEncrypt == null) aesGcmEncrypt = new AesGcm(Key, 16);
             Span<byte> nonce = stackalloc byte[12];
-            
 
-            bool taken = false;
-            try
+
+
+            lock (aesGcmEncrypt)
             {
-                _sendLock.Enter(ref taken);
                 BinaryPrimitives.WriteUInt64BigEndian(nonce.Slice(4), (ulong)_sendNonce);
 
                 _sendNonce += 2;
 
                 aesGcmEncrypt.Encrypt(nonce, data, data, tag);
-            } 
-            finally
-            {
-                if (taken) _sendLock.Exit();
             }
-
             
-         
         }
 
         public void Decrypt(Span<byte> ciphertext, Span<byte> tag)
@@ -323,42 +319,53 @@ namespace Orange.Security.Protocol
             if (aesGcmDecrypt == null) aesGcmDecrypt = new AesGcm(Key, 16);
 
             Span<byte> nonce = stackalloc byte[12];
-            
 
-            bool taken = false;
-            try
+
+
+            lock (aesGcmDecrypt)
             {
-                _recvLock.Enter(ref taken);
                 BinaryPrimitives.WriteUInt64BigEndian(nonce.Slice(4), (ulong)_recvNonce);
 
                 _recvNonce += 2;
 
                 aesGcmDecrypt.Decrypt(nonce, ciphertext, tag, ciphertext);
             }
-            finally
-            {
-                if (taken) _recvLock.Exit();
-            }
 
 
-          
         }
+
+        private bool _disposed = false;
 
         public void Dispose()
         {
-            if (aesGcmDecrypt != null)
-            {
-                aesGcmDecrypt.Dispose();
-            }
-            if (aesGcmEncrypt != null)
-            {
-                aesGcmEncrypt.Dispose();
-            }
-            _ecndhe.Dispose();
-            if (Key != null) Array.Clear(Key, 0, Key.Length);
-            _sendNonce = default;
-            _recvNonce = default;
+            Dispose(true);
             GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed) return;
+            
+            if (disposing)
+            {
+                if (aesGcmDecrypt != null)
+                {
+                    aesGcmDecrypt.Dispose();
+                }
+                if (aesGcmEncrypt != null)
+                {
+                    aesGcmEncrypt.Dispose();
+                }
+                _ecndhe.Dispose();
+                if (Key != null) Array.Clear(Key, 0, Key.Length);
+                _sendNonce = default;
+                _recvNonce = default;
+            }
+            _disposed = true;
+        }
+        ~Tools()
+        {
+            Dispose(false);
         }
 
     }

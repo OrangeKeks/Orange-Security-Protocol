@@ -14,7 +14,12 @@ namespace Orange.Security.Protocol
         /// </summary>
         public OSPServerSettings Settings = new OSPServerSettings();
 
-        
+        private int _connectedClientCount;
+        /// <summary>
+        /// Количество клиентов, который подключены к серверу в данный момент.
+        /// </summary>
+        public int ConnectedClientsCount => _connectedClientCount;
+
         internal OSPMessageHandler messageHandler = null!;
         internal OSPFrameHandler? frameHandler;
         internal byte[]? masterKey = null!;
@@ -181,7 +186,7 @@ namespace Orange.Security.Protocol
                         continue;
                     }
                     if (clientSocket.RemoteEndPoint is IPEndPoint ip)
-                    {
+                    {  
                         OSPListener newClient = new OSPListener(this, clientSocket);
                         all_clients[ip] = newClient;
                     }
@@ -210,6 +215,7 @@ namespace Orange.Security.Protocol
         /// <param name="data">Данные для отправки.</param>
         /// <param name="ip">IP клиента, которому Вы хотите отправить данные.</param>
         /// <param name="description">Универсальное поле с данными в заголовке.</param>
+        /// <param name="UploadProgressReport">Отслеживайте прогресс отправки данных.</param>
         public bool Send(NativeBytes data, IPEndPoint ip, byte[]? description, IProgress<double>? UploadProgressReport = null)
         {
             if (all_clients.TryGetValue(ip, out OSPListener? _client))
@@ -227,6 +233,7 @@ namespace Orange.Security.Protocol
         /// <param name="data">Данные для отправки.</param>
         /// <param name="ip">IP клиента, которому Вы хотите отправить данные.</param>
         /// <param name="description">Универсальное поле с данными в заголовке.</param>
+        /// <param name="UploadProgressReport">Отслеживайте прогресс отправки данных.</param>
         public bool Send(Memory<byte> data, IPEndPoint ip, byte[]? description, IProgress<double>? UploadProgressReport = null)
         {
             if (all_clients.TryGetValue(ip, out OSPListener? _client))
@@ -243,7 +250,8 @@ namespace Orange.Security.Protocol
         /// </summary>
         /// <param name="data">Данные для отправки.</param>
         /// <param name="ip">IP клиента, которому Вы хотите отправить данные.</param>
-        /// <param name="description">Универсальное значение для вас.</param>
+        /// <param name="description">Описание внутри заголовка. Универсально.</param>
+        /// <param name="UploadProgressReport">Отслеживайте прогресс отправки данных.</param>
         public bool Send(byte[] data, IPEndPoint ip, byte[]? description, IProgress<double>? UploadProgressReport = null)
         {
             if (all_clients.TryGetValue(ip, out OSPListener? _client))
@@ -260,7 +268,8 @@ namespace Orange.Security.Protocol
         /// </summary>
         /// <param name="data">Данные для отправки.</param>
         /// <param name="ip">IP клиента, которому Вы хотите отправить данные.</param>
-        /// <param name="description">Универсальное значение для вас.</param>
+        /// <param name="description">Описание внутри заголовка. Универсально.</param>
+        /// <param name="UploadProgressReport">Отслеживайте прогресс отправки данных.</param>
         public bool Send(Stream data, IPEndPoint ip, byte[]? description, IProgress<double>? UploadProgressReport = null)
         {
             if (all_clients.TryGetValue(ip, out OSPListener? _client))
@@ -278,7 +287,8 @@ namespace Orange.Security.Protocol
         /// </summary>
         /// <param name="data">Данные для отправки.</param>
         /// <param name="ip">IP клиента, которому Вы хотите отправить данные.</param>
-        /// <param name="description">Универсальное значение для вас.</param>
+        /// <param name="description">Описание внутри заголовка. Универсально.</param>
+        /// <param name="UploadProgressReport">Отслеживайте прогресс отправки данных.</param>
         public bool Send(OSPData data, IPEndPoint ip, byte[]? description, IProgress<double>? UploadProgressReport = null)
         {
             if (all_clients.TryGetValue(ip, out OSPListener? _client))
@@ -350,7 +360,7 @@ namespace Orange.Security.Protocol
         // New Client Event
         internal virtual void NewClientConnected(IPEndPoint remotePoint)
         {
-
+            _connectedClientCount++;
             NewClientConnectedEvent? msg = OnNewClientConnected;
             if (msg != null)
             {
@@ -370,6 +380,7 @@ namespace Orange.Security.Protocol
         // Client Disconnected 
         internal virtual void ClientDisconnected(IPEndPoint remotePoint)
         {
+            _connectedClientCount--;
             if (all_clients.TryRemove(remotePoint, out OSPListener? listener))
             {
                 listener.Dispose();

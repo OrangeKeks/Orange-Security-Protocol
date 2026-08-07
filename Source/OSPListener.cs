@@ -161,7 +161,7 @@ namespace Orange.Security.Protocol
 
                             sw.Stop();
 
-                            await _scheduler.IngressThrottling(sw.Elapsed.Milliseconds, (int)obj.Length);
+                            await _scheduler.IngressThrottling(sw.Elapsed.TotalMilliseconds, (int)obj.Length);
 
 
                             Tools.Decrypt(obj.AsWritableSpan(), tag.Span);
@@ -175,11 +175,23 @@ namespace Orange.Security.Protocol
 
                             if (_server.messageHandler != null)
                             {
-                                OSPServerAnswer dataAnswer = await _server.messageHandler.Invoke(args);
+                                try
+                                {
+                                    OSPServerAnswer dataAnswer = await _server.messageHandler.Invoke(args);
 
-
-
-                                _scheduler.SendToQueue(dataAnswer.Data, dataAnswer.HeaderDescription, dataAnswer.Code, OSPMessageType.AnswerFromServer, args.Header.UniID);
+                                    _scheduler.SendToQueue(dataAnswer.Data, dataAnswer.HeaderDescription, dataAnswer.Code, OSPMessageType.AnswerFromServer, args.Header.UniID);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _server.ErrorOccured(_ip!, ex);
+                                }
+                                finally
+                                {
+                                    obj.Dispose();
+                                    requestHeader.DescriptionBuffer?.Dispose();
+                                    requestHeader.DescriptionBuffer = null;
+                                }
+                          
 
 
                             }
@@ -196,7 +208,7 @@ namespace Orange.Security.Protocol
 
                             sw.Stop();
 
-                            await _scheduler.IngressThrottling(sw.Elapsed.Milliseconds, bytesRead);
+                            await _scheduler.IngressThrottling(sw.Elapsed.TotalMilliseconds, bytesRead);
 
 
 
@@ -248,7 +260,8 @@ namespace Orange.Security.Protocol
                                 {
 
                                     if (current.data != null) current.data.Dispose();
-
+                                    current.request.DescriptionBuffer?.Dispose();
+                                    current.request.DescriptionBuffer = null;
                                     frames.TryRemove(_frame.UniID, out _);
                                 }
 
@@ -349,8 +362,10 @@ namespace Orange.Security.Protocol
 
                 foreach (var item in frames)
                 {
-                    if (item.Value.data != null) item.Value.data.Dispose();
-
+                 
+                    item.Value.data?.Dispose();
+                    item.Value.request.DescriptionBuffer?.Dispose();
+                    item.Value.request.DescriptionBuffer = null;
                 }
                 if (frameBuffer != null) frameBuffer.Dispose();
                 frames.Clear();

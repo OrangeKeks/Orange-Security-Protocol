@@ -44,7 +44,7 @@ namespace Orange.Security.Protocol
         public OSPException(string message, Exception innerException)
             : base(message, innerException) { }
 
-        
+
     }
 
     public delegate Task<OSPServerAnswer> OSPMessageHandler(OSPMessageEventArgs Arguments);
@@ -77,7 +77,7 @@ namespace Orange.Security.Protocol
         protected override void Dispose(bool disposing) { }
     }
 
-    
+
     /// <summary>
     /// Класс для использования нативной памяти.
     /// </summary>
@@ -104,7 +104,7 @@ namespace Orange.Security.Protocol
 
             _length = Length;
             _ptr = (byte*)NativeMemory.Alloc((nuint)Length);
-            
+
 
 
             if (Length <= int.MaxValue)
@@ -116,9 +116,9 @@ namespace Orange.Security.Protocol
 
             if (_warnGC) GC.AddMemoryPressure(_length);
 
-            
+
         }
-        
+
 
         public void Write(ReadOnlySpan<byte> buffer)
         {
@@ -178,7 +178,7 @@ namespace Orange.Security.Protocol
             if (_length <= int.MaxValue)
             {
                 return _sliceManager.Memory;
-                
+
             }
             else throw new InvalidOperationException();
 
@@ -197,13 +197,13 @@ namespace Orange.Security.Protocol
 
         public byte this[long index]
         {
-            
+
             get
             {
                 if ((ulong)index >= (ulong)_length) throw new IndexOutOfRangeException();
                 return _ptr[index];
             }
-            
+
             set
             {
                 if ((ulong)index >= (ulong)_length) throw new IndexOutOfRangeException();
@@ -306,7 +306,7 @@ namespace Orange.Security.Protocol
         public static (string PublicX509Key, string PrivatePKCS8Key) GenerateECDSAMasterKeys()
         {
             using var ecdha = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-            
+
             return (
                 Convert.ToBase64String(ecdha.ExportSubjectPublicKeyInfo()),
                 Convert.ToBase64String(ecdha.ExportPkcs8PrivateKey())
@@ -390,7 +390,7 @@ namespace Orange.Security.Protocol
         /// Интервал между пинг-пакетами в миллисекундах. Если сервер не принимает пинг-пакеты с такой скоростью, то интервал скорректируется автоматически. Нулевое значение - пинг-пакеты отключены.
         /// </summary>
         public ushort PingInvervalMilliseconds { get; set; } = 0;
-        
+
     }
 
 
@@ -455,11 +455,11 @@ namespace Orange.Security.Protocol
         public OSPStatusCode Code { get; set; } = OSPStatusCode.Error;
 
         /// <summary>
-        /// Данные внутри заголовка.
+        /// Данные внутри заголовка. Протокол создаёт копию, поэтому за жизненным циклом этих данных Вы должны следить сами.
         /// </summary>
-        public byte[]? HeaderDescription { get; set; } = default;
+        public ReadOnlyMemory<byte>? HeaderDescription { get; set; } = default;
 
-        
+
     }
 
 
@@ -503,13 +503,33 @@ namespace Orange.Security.Protocol
     public class OSPHeaderRequest : OSPHeader
     {
         public OSPStatusCode MessageStatus { get; set; }
-        public byte[] Description { get; set; } = null!;
+        public ReadOnlyMemory<byte> Description => _descriptionBuffer != null
+            ? _descriptionBuffer.AsMemory()
+            : ReadOnlyMemory<byte>.Empty;
         public IPEndPoint IPEndPoint { get; set; } = null!;
         public long DataLength { get; set; }
+
+        private NativeBytes? _descriptionBuffer;
+
+
+        internal NativeBytes? DescriptionBuffer
+        {
+            get => _descriptionBuffer;
+            set
+            {
+                if (_descriptionBuffer != value)
+                {
+                    _descriptionBuffer = value;
+                }
+            }
+        }
+
+
+        
         internal OSPHeaderRequest()
         {
-            
-        } 
+
+        }
 
     }
     internal class OSPHeaderFrame : OSPHeader
@@ -539,7 +559,7 @@ namespace Orange.Security.Protocol
     /// <summary>
     /// Представляет класс, в котором лежит ответ от сервера. Иногда сервер может вернуть статус-код без данных.   
     /// </summary>
-    public class OSPResponse
+    public class OSPResponse : IDisposable
     {
 
         /// <summary>
@@ -563,6 +583,38 @@ namespace Orange.Security.Protocol
         public NativeBytes? Data { get; set; }
 
         internal OSPResponse() { }
+
+
+        private bool _disposed;
+
+        /// <summary>
+        /// Очищает данные и описание и заголовка, немедленно высвобождая память. К этим данным больше нельзя будет обращаться.
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this); 
+        }      
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed) return;
+
+            if (disposing)
+            {
+               
+                Data?.Dispose();
+                Data = null;
+
+                Header.DescriptionBuffer?.Dispose();
+                Header.DescriptionBuffer = null;
+            }
+
+            _disposed = true;
+        }
+        ~OSPResponse()
+        {
+            Dispose(false);
+        }
     }
 
     internal enum OSPPriority
