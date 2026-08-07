@@ -10,7 +10,7 @@
 		<AssemblyName>Orange.Security.Protocol</AssemblyName>
 		<RootNamespace>Orange.Security.Protocol</RootNamespace>
 		<PackageId>Orange-Security-Protocol</PackageId>
-		<Version>1.0.0</Version>
+		<Version>1.0.4</Version>
 		<Authors>OrangeKeks</Authors>
 
 		<Description>A high-performance, ultra-low latency custom network protocol built for modern .NET applications. Features an unmanaged zero-allocation memory pipeline, low-overhead frame formatting, and strict GC-free design optimized for high-throughput binary data streaming.</Description>
@@ -19,6 +19,8 @@
 		<PackageIcon>osp_nuget.png</PackageIcon>
 		<PackageTags>networking;protocol;osp;high-performance;zero-allocation;safe-native;sockets;low-latency;binary-stream</PackageTags>
 
+		<PackageProjectUrl>https://github.com/OrangeKeks/Orange-Security-Protocol/</PackageProjectUrl>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<RepositoryUrl>https://github.com/OrangeKeks/Orange-Security-Protocol</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
 
@@ -26,9 +28,10 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+		<PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
 	</ItemGroup>
 	<ItemGroup>
-		<None Include="osp_nuget.png" Pack="true" PackagePath="\"/>
+		<None Include="osp_nuget.png" Pack="true" PackagePath="\" />
+		<None Include="README.md" Pack="true" PackagePath="\" />
 	</ItemGroup>
 </Project>
