@@ -165,4 +165,4 @@
 
 ## Зависимости
 
-- BouncyCastle.Cryptography v2.6.2
+- BouncyCastle.Cryptography >= v2.7.0
